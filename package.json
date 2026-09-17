@@ -1,0 +1,22 @@
+{
+  "name": "tui-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "agent": "bun run src/cli/headless.ts",
+    "replay": "bun run scripts/replay.ts",
+    "typecheck": "tsc --noEmit",
+    "tui": "bun run src/cli/tui.tsx",
+    "sessions": "bun run src/cli/sessions.ts"
+  },
+  "dependencies": {
+    "ink": "^7.1.1",
+    "react": "^19.2.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "@types/react": "^19.2.0",
+    "typescript": "^5.7.0"
+  }
+}

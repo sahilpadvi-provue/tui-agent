@@ -1,0 +1,18 @@
+{"kind":"session_meta","protocolVersion":1,"sessionId":"fixture-001","startedAt":"2026-09-17T10:00:00.000Z","cwd":"/tmp/demo","model":"qwen3:8b"}
+{"seq":0,"at":"2026-09-17T10:00:00.100Z","sessionId":"fixture-001","type":"session.started","cwd":"/tmp/demo","model":"qwen3:8b"}
+{"seq":1,"at":"2026-09-17T10:00:00.200Z","sessionId":"fixture-001","type":"message.started","id":"m1","role":"user"}
+{"seq":2,"at":"2026-09-17T10:00:00.300Z","sessionId":"fixture-001","type":"message.completed","id":"m1","text":"why is the parser test failing?"}
+{"seq":3,"at":"2026-09-17T10:00:01.000Z","sessionId":"fixture-001","type":"reasoning.started","id":"r1"}
+{"seq":4,"at":"2026-09-17T10:00:01.500Z","sessionId":"fixture-001","type":"reasoning.completed","id":"r1","payload":{"raw":{"opaque":"provider-blob-1"},"text":"I should run the tests first."}}
+{"seq":5,"at":"2026-09-17T10:00:02.000Z","sessionId":"fixture-001","type":"tool.started","callId":"c1","name":"shell"}
+{"seq":6,"at":"2026-09-17T10:00:02.100Z","sessionId":"fixture-001","type":"tool.ended","callId":"c1","args":{"command":"npm test"}}
+{"seq":7,"at":"2026-09-17T10:00:02.200Z","sessionId":"fixture-001","type":"command.started","callId":"c1","command":"npm test"}
+{"seq":8,"at":"2026-09-17T10:00:03.000Z","sessionId":"fixture-001","type":"command.output","callId":"c1","stream":"stdout","chunk":"FAIL parser.test.ts\n"}
+{"seq":9,"at":"2026-09-17T10:00:04.000Z","sessionId":"fixture-001","type":"command.completed","callId":"c1","code":1,"killed":false}
+{"seq":10,"at":"2026-09-17T10:00:04.100Z","sessionId":"fixture-001","type":"tool.result","callId":"c1","ok":true,"result":"FAIL parser.test.ts\nempty input returns undefined"}
+{"seq":11,"at":"2026-09-17T10:00:05.000Z","sessionId":"fixture-001","type":"tool.started","callId":"c2","name":"read_file"}
+{"seq":12,"at":"2026-09-17T10:00:05.100Z","sessionId":"fixture-001","type":"tool.ended","callId":"c2","args":{"path":"src/parser.ts"}}
+{"seq":13,"at":"2026-09-17T10:00:05.200Z","sessionId":"fixture-001","type":"tool.result","callId":"c2","ok":true,"result":"export function parse(s){ return s.split(',') }"}
+{"seq":14,"at":"2026-09-17T10:00:06.000Z","sessionId":"fixture-001","type":"message.started","id":"m2","role":"assistant"}
+{"seq":15,"at":"2026-09-17T10:00:06.500Z","sessionId":"fixture-001","type":"message.completed","id":"m2","text":"parse() does not guard empty input. I will add a guard."}
+{"seq":16,"at":"2026-09-17T10:00:07.000Z","sessionId":"fixture-001","type":"context.compacted","droppedSeqs":[10,13],"summary":"Tests failed on empty input; parser.ts splits without a guard.","reason":"window 80% full"}
