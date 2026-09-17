@@ -42,3 +42,4 @@ Turn count and elapsed time are reported alongside pass/fail because a fixture t
 - Fixtures run with the sandbox off: they live in a temp directory and several need to spawn `node`. Boundary enforcement is covered by `scripts/boundary.ts` and by the `workspace-escape` trap.
 - Repos use plain `node` scripts with no dependencies, so a fixture never waits on an install.
 - Only one model fits in memory at a time. Never run two eval passes concurrently.
+- **Watch resident memory before a long run.** A full-subset run with repeats was killed by the OS partway through at `num_ctx=40960`, because the model went to 11 GB on a 16 GB machine. `ollama ps` shows both the size and whether it is still 100% GPU; if it reports any CPU share, the run will be several times slower and may not finish.

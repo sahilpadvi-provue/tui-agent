@@ -74,9 +74,15 @@ export class OllamaClient implements ModelClient {
     this.name = model;
     this.facts = {
       contextWindow:
-        // Comfortably above Ollama's own default, which truncates silently,
-        // without the KV cache that a full 40k window allocates -- measured at
-        // roughly twice the wall time on an 8B model for no gain.
+        // Above Ollama's own default, which truncates silently, and below the
+        // point where the KV cache stops fitting in GPU memory. Measured on a
+        // 16 GB machine with qwen3:8b: 16k leaves the model 7.8 GB resident and
+        // 100% on GPU; 40k takes it to 11 GB and spills 12% of the layers to
+        // CPU, which cost roughly 3x the wall time on the eval fixtures.
+        //
+        // This ceiling is a property of the machine, not of the model. On a
+        // box with more unified memory the right number is higher; raise it
+        // with CONTEXT_WINDOW and check `ollama ps` still reports 100% GPU.
         facts?.contextWindow ?? Number(process.env.CONTEXT_WINDOW ?? 16_384),
       cacheThreshold: facts?.cacheThreshold ?? null,
       supportsTools: facts?.supportsTools ?? true,
