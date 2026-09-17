@@ -30,7 +30,7 @@ Ink erases its previous live frame with `eraseLines(lines.length)` — a count o
 
 This is ink#907, closed upstream as not planned, and it cannot be patched from outside: repainting still has to erase by line count first. What *can* be controlled is the input to that count, which makes it a layout rule rather than a rendering bug. Full-width border rules, `space-between` footers and progress bars are what cost rows; ordinary text costs none.
 
-So the composer has no border, and the footer is left-aligned and drops fields rather than padding to the edge. `scripts/reflow-check.tsx` measures every live line against the terminal width in four states at three widths, and fails if any reaches it.
+So the composer and the approval prompt are **banded rather than bordered**: a background that stops at the end of the text reads as the same field a border would draw, and costs no width. The footer is left-aligned and drops fields rather than padding to the edge. `scripts/reflow-check.tsx` measures every live line against the terminal width in four states at three widths, and fails if any reaches it.
 
 The settled transcript is exempt: `Static` prints it once and never erases it, so its width is the terminal's problem, exactly as ordinary scrollback is.
 
