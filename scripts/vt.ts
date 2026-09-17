@@ -7,6 +7,8 @@
  * re-wraps on resize the way a real terminal does.
  */
 
+import { PassThrough, Writable } from "node:stream";
+
 export class Term {
   cols: number;
   rows: number;
@@ -91,4 +93,34 @@ export class Term {
   visible(): string[] {
     return this.screen.map((r) => r.join("").trimEnd());
   }
+}
+
+/**
+ * A screen to assert against, wired to a stream the UI can be mounted on.
+ *
+ * The escape sequences a cell renderer emits *are* the row boundaries, so
+ * stripping them concatenates the screen into one line. Every harness that
+ * reads what is displayed has to play the output into a terminal instead.
+ */
+export function screen(cols: number, rows: number) {
+  const term = new Term(cols, rows);
+  let bytes = "";
+  const stdout = Object.assign(
+    new Writable({ write(c, _e, cb) { bytes += String(c); term.write(String(c)); cb(); return true; } }),
+    { columns: cols, rows, isTTY: true },
+  );
+  const stdin = Object.assign(new PassThrough(), {
+    isTTY: true, setRawMode() {}, ref() {}, unref() {},
+  });
+  return {
+    term,
+    stdout: stdout as unknown as NodeJS.WriteStream,
+    stdin: stdin as unknown as NodeJS.ReadStream & { write(s: string): void },
+    /** Every row currently displayed, blank ones included. */
+    lines: () => term.visible(),
+    /** Everything written, scrollback first. */
+    all: () => [...term.scrollback, ...term.visible()],
+    /** The byte stream, for checks about terminal modes rather than content. */
+    raw: () => bytes,
+  };
 }

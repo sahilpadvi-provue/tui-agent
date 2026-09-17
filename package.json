@@ -13,6 +13,7 @@
     "host:check": "bun run scripts/host-smoke.tsx",
     "colour:check": "bun run scripts/colour-check.ts",
     "quiet:check": "bun run scripts/quiet-resize-check.tsx",
+    "input:check": "bun run scripts/input-check.tsx",
     "app:check": "bun --preload ./scripts/cells-preload.ts scripts/app-cells-smoke.tsx",
     "tui:cells": "bun --preload ./scripts/cells-preload.ts src/cli/tui.tsx",
     "sessions": "bun run src/cli/sessions.ts",

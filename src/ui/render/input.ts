@@ -25,6 +25,8 @@ export type Key = {
   leftArrow: boolean;
   rightArrow: boolean;
   tab: boolean;
+  home: boolean;
+  end: boolean;
 };
 
 export type KeyEvent = { char: string; key: Key };
@@ -32,7 +34,7 @@ export type KeyEvent = { char: string; key: Key };
 const NONE: Key = {
   ctrl: false, meta: false, shift: false, escape: false, return: false,
   backspace: false, delete: false, upArrow: false, downArrow: false,
-  leftArrow: false, rightArrow: false, tab: false,
+  leftArrow: false, rightArrow: false, tab: false, home: false, end: false,
 };
 
 const key = (over: Partial<Key>): Key => ({ ...NONE, ...over });
@@ -44,39 +46,93 @@ const PASTE_END = "\x1b[201~";
 export const ENABLE_PASTE = "\x1b[?2004h";
 export const DISABLE_PASTE = "\x1b[?2004l";
 
-const ARROWS: Record<string, Partial<Key>> = {
+/**
+ * Home and End have two encodings each. Terminals disagree about which they
+ * send, and `xterm` sends different ones depending on whether the keypad is in
+ * application mode, so both forms are accepted.
+ */
+const SEQUENCES: Record<string, Partial<Key>> = {
   A: { upArrow: true },
   B: { downArrow: true },
   C: { rightArrow: true },
   D: { leftArrow: true },
+  H: { home: true },
+  F: { end: true },
+  "1~": { home: true },
+  "7~": { home: true },
+  "4~": { end: true },
+  "8~": { end: true },
+  "3~": { delete: true },
 };
 
 export type Parsed = { events: KeyEvent[]; pastes: string[] };
 
-export function parse(data: string): Parsed {
+function parseChunk(data: string, carry: string | null): Parsed & { carry: string | null } {
   const events: KeyEvent[] = [];
   const pastes: string[] = [];
 
   let i = 0;
+  let pending = carry;
+
+  // A paste split across two reads arrives as a body with no terminator, then
+  // a terminator with the rest. Holding the body until the terminator lands is
+  // what stops the newline inside it from being read as Enter.
+  if (pending !== null) {
+    const end = data.indexOf(PASTE_END);
+    if (end === -1) return { events: [], pastes: [], carry: pending + data };
+    pastes.push(pending + data.slice(0, end));
+    pending = null;
+    i = end + PASTE_END.length;
+  }
+
+  // Printable characters are emitted as one event per run, not one per
+  // character. A handler that rebuilds the line from its own state reads that
+  // state once per event, so splitting "abc" into three would have all three
+  // computed from the same stale value and only the last would survive. Fast
+  // typing and a paste into a terminal that ignores bracketed paste both
+  // arrive as one chunk, which is exactly this case.
+  let runStart = -1;
+  const flushRun = () => {
+    if (runStart === -1) return;
+    events.push({ char: data.slice(runStart, i), key: NONE });
+    runStart = -1;
+  };
+
   while (i < data.length) {
     if (data.startsWith(PASTE_START, i)) {
+      flushRun();
       const end = data.indexOf(PASTE_END, i);
       // An unterminated paste means the chunk split mid-paste. Taking the rest
       // is wrong only in that the tail arrives as a second paste.
-      const stop = end === -1 ? data.length : end;
-      pastes.push(data.slice(i + PASTE_START.length, stop));
-      i = end === -1 ? data.length : end + PASTE_END.length;
+      if (end === -1) {
+        pending = data.slice(i + PASTE_START.length);
+        i = data.length;
+        continue;
+      }
+      pastes.push(data.slice(i + PASTE_START.length, end));
+      i = end + PASTE_END.length;
       continue;
     }
 
     const ch = data[i]!;
 
     if (ch === "\x1b") {
-      const seq = /^\x1b\[([0-9;]*)([A-Za-z~])/.exec(data.slice(i));
+      flushRun();
+      const seq = /^\x1b(?:\[|O)([0-9;]*)([A-Za-z~])/.exec(data.slice(i));
       if (seq) {
-        const arrow = ARROWS[seq[2] ?? ""];
-        events.push({ char: "", key: key(arrow ?? {}) });
+        const code = seq[2] === "~" ? `${seq[1]}~` : seq[2] ?? "";
+        // Alt sends the same sequence with a ";3" modifier, and the word jumps
+        // are bound to it.
+        const meta = (seq[1] ?? "").endsWith(";3");
+        events.push({ char: "", key: key({ ...(SEQUENCES[code] ?? {}), meta }) });
         i += seq[0].length;
+        continue;
+      }
+      // ESC followed by a letter is how a terminal sends Alt with that letter.
+      const next = data[i + 1];
+      if (next !== undefined && next >= " " && next !== "\x7f") {
+        events.push({ char: next, key: key({ meta: true }) });
+        i += 2;
         continue;
       }
       events.push({ char: "", key: key({ escape: true }) });
@@ -84,23 +140,48 @@ export function parse(data: string): Parsed {
       continue;
     }
 
-    if (ch === "\r" || ch === "\n") {
+    if (ch >= " " && ch !== "\x7f") {
+      if (runStart === -1) runStart = i;
+      i += 1;
+      continue;
+    }
+
+    flushRun();
+    if (ch === "\x7f") {
+      events.push({ char: "", key: key({ backspace: true }) });
+    } else if (ch === "\r" || ch === "\n") {
       events.push({ char: "", key: key({ return: true }) });
-    } else if (ch === "\x7f" || ch === "\b") {
+    } else if (ch === "\b") {
       events.push({ char: "", key: key({ backspace: true }) });
     } else if (ch === "\t") {
       events.push({ char: "", key: key({ tab: true }) });
-    } else if (ch < " ") {
+    } else {
       // Ctrl-A is 0x01, so the letter is the code plus 0x60.
       events.push({
         char: String.fromCharCode(ch.charCodeAt(0) + 0x60),
         key: key({ ctrl: true }),
       });
-    } else {
-      events.push({ char: ch, key: NONE });
     }
     i += 1;
   }
+  flushRun();
 
-  return { events, pastes };
+  return { events, pastes, carry: pending };
+}
+
+/**
+ * Stateful across reads, because a paste is.
+ *
+ * An escape sequence split across two reads is still mis-parsed; Ink resolves
+ * that with a short timer. Not done here, and not yet needed: the sequences
+ * this parses are at most six bytes.
+ */
+export class Parser {
+  #carry: string | null = null;
+
+  push(data: string): Parsed {
+    const { events, pastes, carry } = parseChunk(data, this.#carry);
+    this.#carry = carry;
+    return { events, pastes };
+  }
 }

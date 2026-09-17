@@ -15,7 +15,7 @@ import { createRoot, reconciler, toLines, type Root } from "./host.ts";
 import { paint, type Screen } from "./screen.ts";
 import { renderFrame, HIDE_CURSOR, SHOW_CURSOR } from "./diff.ts";
 import {
-  parse, ENABLE_PASTE, DISABLE_PASTE, type Key, type KeyEvent,
+  Parser, ENABLE_PASTE, DISABLE_PASTE, type Key, type KeyEvent,
 } from "./input.ts";
 
 declare module "react" {
@@ -208,11 +208,15 @@ export function mount(node: ReactNode, options: MountOptions = {}): Instance {
 
   let prev: Screen | null = null;
   let scheduled = false;
+  let unmounted = false;
   let done = () => {};
   const exited = new Promise<void>((r) => { done = r; });
 
   const draw = () => {
     scheduled = false;
+    // Unmounting empties the tree, and painting that erases the final frame --
+    // which for an inline renderer means the session wipes itself on exit.
+    if (unmounted) return;
     const next = paint(toLines(root), out.columns ?? 80);
     out.write(renderFrame(prev, next, out.rows ?? 24));
     prev = next;
@@ -233,8 +237,9 @@ export function mount(node: ReactNode, options: MountOptions = {}): Instance {
     pastes: new Set(),
   };
 
+  const parser = new Parser();
   const onData = (chunk: Buffer | string) => {
-    const { events, pastes } = parse(String(chunk));
+    const { events, pastes } = parser.push(String(chunk));
     for (const e of events) for (const fn of [...session.keys]) fn(e);
     for (const text of pastes) for (const fn of [...session.pastes]) fn(text);
   };
@@ -255,7 +260,6 @@ export function mount(node: ReactNode, options: MountOptions = {}): Instance {
     reconciler.flushSyncWork();
   };
 
-  let unmounted = false;
   const instance: Instance = {
     rerender,
     unmount() {
