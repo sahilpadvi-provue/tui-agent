@@ -121,6 +121,21 @@ function view() {
 const instance = mount(view());
 const rerender = () => instance.rerender(view());
 
+/**
+ * Ink erases its previous frame by counting the lines it wrote. A resize
+ * changes how many rows those lines occupy, so the count stops matching the
+ * screen, the erase falls short, and every frame after it appends instead of
+ * replacing -- the live region repeating down the terminal (ink#907, closed
+ * upstream as not planned).
+ *
+ * Clearing discards that bookkeeping and starts the next frame from a known
+ * state. It costs the current frame, which is redrawn immediately.
+ */
+process.stdout.on("resize", () => {
+  instance.clear();
+  rerender();
+});
+
 async function run(text: string) {
   busy = true;
   rerender();

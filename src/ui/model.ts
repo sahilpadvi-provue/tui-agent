@@ -47,6 +47,8 @@ export function cleared(s: ViewState): ViewState {
 
 const MAX_TOOL_OUTPUT = 4000;
 
+
+
 export type ViewAction = AgentEvent | { kind: "clear" };
 
 export function reduce(s: ViewState, action: ViewAction): ViewState {
@@ -69,10 +71,28 @@ export function reduce(s: ViewState, action: ViewAction): ViewState {
 
     case "reasoning.started":
       return { ...s, items: [...items, { kind: "reasoning", id: e.id, chars: 0, done: false }] };
+    /**
+     * Ignored on purpose.
+     *
+     * Reasoning arrives in thousands of deltas and the line it draws does not
+     * change, so reacting to each one meant thousands of redraws of identical
+     * characters -- and every redraw is another chance for a terminal whose
+     * erase bookkeeping is off to append instead of replace. The shimmer
+     * already says the agent is alive, and the exact length arrives with the
+     * completion event.
+     */
     case "reasoning.delta":
-      return { ...s, items: patch(items, (i) => i.kind === "reasoning" && i.id === e.id, (i) => ({ ...i, chars: (i as any).chars + e.text.length })) };
+      return s;
+
     case "reasoning.completed":
-      return { ...s, items: patch(items, (i) => i.kind === "reasoning" && i.id === e.id, (i) => ({ ...i, done: true })) };
+      return {
+        ...s,
+        items: patch(items, (i) => i.kind === "reasoning" && i.id === e.id, (i) => ({
+          ...i,
+          done: true,
+          chars: e.payload.text?.length ?? (i as Extract<ViewItem, { kind: "reasoning" }>).chars,
+        })),
+      };
 
     case "tool.started":
       return { ...s, items: [...items, { kind: "tool", callId: e.callId, name: e.name, output: "", running: true }] };
