@@ -91,26 +91,44 @@ export function measureAt(depth: number, termWidth: number): number {
   return Math.min(MEASURE, available);
 }
 
-/** Wraps prose on word boundaries, preserving the blank lines between paragraphs. */
+/**
+ * Wraps prose on word boundaries, preserving the blank lines between
+ * paragraphs and nothing else.
+ *
+ * Models end messages with a varying number of newlines, and each one used to
+ * become a blank row -- so the gap before the next thing on screen depended on
+ * whitespace nobody chose. Leading and trailing blanks are dropped and runs
+ * are collapsed to one, which makes the rhythm a property of the layout rather
+ * than of the model's last token.
+ */
 export function wrap(text: string, width: number): string[] {
   const out: string[] = [];
   for (const para of text.split("\n")) {
-    if (para.length <= width) {
-      out.push(para);
+    const line = para.trimEnd();
+    if (line.length <= width) {
+      out.push(line);
       continue;
     }
-    let line = "";
-    for (const word of para.split(/\s+/)) {
-      if (line && (line + " " + word).length > width) {
-        out.push(line);
-        line = word;
+    let current = "";
+    for (const word of line.split(/\s+/)) {
+      if (current && (current + " " + word).length > width) {
+        out.push(current);
+        current = word;
       } else {
-        line = line ? `${line} ${word}` : word;
+        current = current ? `${current} ${word}` : word;
       }
     }
-    if (line) out.push(line);
+    if (current) out.push(current);
   }
-  return out;
+
+  const collapsed: string[] = [];
+  for (const line of out) {
+    if (line === "" && collapsed.at(-1) === "") continue;
+    collapsed.push(line);
+  }
+  while (collapsed[0] === "") collapsed.shift();
+  while (collapsed.at(-1) === "") collapsed.pop();
+  return collapsed;
 }
 
 /** Single-line clip. For output and code, where re-wrapping would mislead. */

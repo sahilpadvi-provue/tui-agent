@@ -47,6 +47,8 @@ Four numbers, in `layout.ts`. Anything new should replace one of them, not join 
 
 **A blank row is the separator within an exchange**, so it is spent where the reader changes what they are doing: before a new exchange, and when moving from the agent's work back to its answer. Consecutive tool calls are one continuous action and get none — spacing them out is what turns a session into a scroll. The rule lives in `gapBefore()` and depends only on an item and the one before it, which is what keeps the settled list append-only for `Static`.
 
+**Blank rows in prose belong to the layout, not the model.** `wrap()` drops leading and trailing blanks and collapses runs to one, so the gap before the next thing on screen does not depend on how many newlines a model happened to end with. Paragraph breaks inside a message survive.
+
 **Prose wraps; output and code clip.** Re-flowing a diff or a stack trace to a narrow measure destroys the alignment that makes it readable, so those are truncated at the available width instead.
 
 ## Weight

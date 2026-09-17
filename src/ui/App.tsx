@@ -153,6 +153,8 @@ export function App({
           <Row key={`live-${i}`} line={l} />
         ))}
 
+        {state.items.length > 0 && <Label> </Label>}
+
         {busy && !state.pending && (
           <Stack direction="row" padX={GUTTER}>
             <Label color="cyan">{"\u00b7 "}</Label>
@@ -270,7 +272,7 @@ function formatElapsed(seconds: number): string {
 
 /** Thousands separator without the noise of full locale formatting. */
 function fmt(n: number): string {
-  return n >= 10_000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 }
 
 function basename(p: string): string {

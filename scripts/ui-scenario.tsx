@@ -57,7 +57,9 @@ e({ type: "error", message: "tool reported a failure the model must handle", fat
 tool("replace_lines", { path: "src/header.js", start_line: 1, end_line: 1, content: "import { splitRespectingQuotes, isQuoted, unquote } from \"./parse.js\";\n\nexport function parseHeader(line) {" }, "replaced lines 1-1 of src/header.js (1 -> 3 lines)", true);
 e({ type: "context.compacted", droppedSeqs: [12, 13, 14], summary: "read src/parse.js, src/header.js; ran `npm test`", reason: "context 31204 tokens over 28672 budget (window 40960)" });
 tool("shell", { command: "npm test" }, "4 passing\n[exit 0]", true);
-assistant("Done. The header row now uses the same quote-aware split, with the import added.");
+// Deliberately ragged: models end messages with whatever whitespace they end
+// with, and the rhythm on screen must not depend on it.
+assistant("Done. The header row now uses the same quote-aware split, with the import added.\n\n\n");
 e({ type: "turn.completed", turn: 9, usage: { input: 18432, output: 2106 } });
 
 await new Promise((r) => setTimeout(r, 250));
