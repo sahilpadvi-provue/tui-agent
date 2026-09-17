@@ -22,21 +22,7 @@ The terminal client. One subscriber to the event bus among several that could ex
 
 **The conversation still lives in `model.ts`, not the terminal.** Scrollback is where settled output is *displayed*; the event log remains the source of truth. Never read state back off the screen.
 
-## The layout rule that matters most
-
-**No line in the live region may reach the terminal's width.**
-
-Ink erases its previous live frame with `eraseLines(lines.length)` — a count of *logical* lines. When the terminal narrows it re-wraps that frame to the new width first, so the frame occupies more *physical* rows than it has lines. Ink erases the smaller number, the surplus rows survive, and the next frame is drawn beneath them. Every narrowing leaks one row per line that was wider than the new width, which is how one line becomes twenty stacked down the screen.
-
-This is ink#907, closed upstream as not planned, and it cannot be patched from outside: repainting still has to erase by line count first. What *can* be controlled is the input to that count, which makes it a layout rule rather than a rendering bug. Full-width border rules, `space-between` footers and progress bars are what cost rows; ordinary text costs none.
-
-So the composer and the approval prompt are marked with a **bar at the left**. A border rules the full width and a band pads to it; a band that stops after the text avoids the width but reads as a highlight someone left behind, and it does not match the full-width bands in the transcript. A bar is one column, so it is honest at any width and consistent with itself. The footer is left-aligned and drops fields rather than padding to the edge.
-
-The transcript's own bands stay full width, because `Static` prints them once and never erases them. `scripts/reflow-check.tsx` measures every live line against the terminal width in four states at three widths, and fails if any reaches it.
-
-The settled transcript is exempt: `Static` prints it once and never erases it, so its width is the terminal's problem, exactly as ordinary scrollback is.
-
-**Where this ends.** A cell-buffer renderer — diffing a grid and addressing the cursor absolutely, which is what OpenTUI does and what Claude Code's forked renderer does — has no erase-by-line-count step, so terminal reflow cannot desync it. If full-width chrome becomes a requirement, that is the selection criterion, and it is why only `primitives.tsx` imports Ink.
+**Full-width chrome in the live region leaks rows on resize, and we accept that.** The composer's rules are the width of the terminal, and Ink erases its last frame by logical line count while the terminal re-wraps to physical rows — so every narrowing leaves two rows behind. See the README for the mechanism. Removing the chrome fixes it and was rejected on how it looked; the real fix is a cell-buffer renderer. `scripts/reflow-check.tsx` measures it and is expected to fail.
 
 **Inline, not alternate screen.** Settled output is printed once into the user's own scrollback, where they can scroll, search and copy it with the terminal they already know. An app that owns the whole screen cannot hand its history back. The accepted cost is ink#907: narrowing the terminal can leave ghost lines, and there is no upstream fix.
 

@@ -17,6 +17,18 @@
  *
  * The settled transcript is exempt -- Static prints it once and never erases
  * it, so its width is the terminal's problem, exactly as ordinary scrollback is.
+ *
+ * THIS IS EXPECTED TO FAIL, deliberately.
+ *
+ * Satisfying it meant giving up the composer's border and the footer's right
+ * edge, and the result did not look like the product we want. The borders were
+ * put back and the leak accepted for now, so this is a measurement rather than
+ * a gate: it says exactly what the current design costs (two full-width lines,
+ * so two ghost rows per narrowing step) and it will pass the day the renderer
+ * can carry full-width chrome safely.
+ *
+ * Do not add it to the gate suite, and do not fix it by trimming the UI again
+ * without asking -- that trade has been made and rejected once.
  */
 import React from "react";
 import { render } from "ink";
