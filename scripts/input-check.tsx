@@ -17,7 +17,7 @@
 
 import React from "react";
 import { Parser } from "../src/ui/render/input.ts";
-import { Label, mount } from "../src/ui/render/primitives.tsx";
+import { Label, mount } from "../src/ui/primitives.tsx";
 import { screen } from "./vt.ts";
 
 let failures = 0;

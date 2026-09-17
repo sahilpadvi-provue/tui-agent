@@ -1,34 +1,36 @@
 /**
- * Resizing must not reprint the transcript.
+ * Resizing must not duplicate the transcript.
  *
- * Static prints what it has not printed before and tracks that by count, so
- * the list it is given must be append-only in the strictest sense. Deriving
- * those lines from the current terminal width broke that: on resize every
- * line was re-wrapped, the count changed, and Ink printed the difference as
- * new content -- the transcript repeating itself down the screen.
+ * The check used to be that settled rows are never written again, which was
+ * Ink's guarantee: Static prints what it has not printed before and tracks
+ * that by count, so re-wrapping on resize made the count change and Ink
+ * printed the difference as new content.
+ *
+ * A cell renderer repaints the visible window on a width change on purpose --
+ * that is the fix, not a regression -- so counting writes now measures the
+ * wrong thing. What still has to hold, and is what a reader would actually
+ * complain about, is that the transcript appears once on screen afterwards.
+ * So this reads the terminal rather than the byte stream.
  */
 import React from "react";
-import { render } from "ink";
-import { PassThrough, Writable } from "node:stream";
+import { mount } from "../src/ui/primitives.tsx";
+import { screen } from "./vt.ts";
 import { EventBus } from "../src/core/bus.ts";
 import { App, countSettled } from "../src/ui/App.tsx";
 
-let buf = "";
-const stdout: any = Object.assign(
-  new Writable({ write(c, _e, cb) { buf += String(c); cb(); return true; } }),
-  { columns: 100, rows: 30, isTTY: true },
-);
-const stdin = Object.assign(new PassThrough(), { isTTY: true, setRawMode() {}, ref() {}, unref() {} });
+const vt = screen(100, 30);
+const stdout = vt.stdout as unknown as { columns: number; emit(e: string): void };
 
 const bus = new EventBus();
-const app = render(
+const app = mount(
   <App bus={bus} cwd="/tmp/demo" model="m" version="0" backend="b" sandbox="off" busy={false}
        onSubmit={() => {}} onCommand={() => {}} onCancel={() => {}} onPermission={() => {}} />,
-  { stdout, stdin: stdin as any, patchConsole: false },
+  { stdout: vt.stdout, stdin: vt.stdin },
 );
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const plain = () => buf.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "");
+/** Everything on screen, scrollback included: where a duplicate would show. */
+const plain = () => vt.all().join("\n");
 const count = (text: string, needle: string) => text.split(needle).length - 1;
 
 let failures = 0;
@@ -59,7 +61,6 @@ for (let i = 0; i < 3; i++) {
 }
 
 // Now resize, twice, in both directions.
-buf = "";
 stdout.columns = 60;
 stdout.emit("resize");
 await wait(250);
@@ -74,11 +75,12 @@ app.unmount();
 await app.waitUntilExit();
 
 for (let i = 0; i < 3; i++) {
-  check(`request ${i} not reprinted on resize`, !afterWide.includes(asked(i)),
+  check(`request ${i} appears once after resizing`, count(afterWide, asked(i)) === 1,
     `appeared ${count(afterWide, asked(i))} time(s)`);
-  check(`output ${i} not reprinted on resize`, !afterWide.includes(`RESULT-${i}`));
+  check(`output ${i} appears once`, count(afterWide, `RESULT-${i}`) === 1,
+    `appeared ${count(afterWide, `RESULT-${i}`)} time(s)`);
 }
-check("narrowing alone did not reprint", !afterNarrow.includes(asked(0)),
+check("narrowing alone did not duplicate it", count(afterNarrow, asked(0)) === 1,
   `${count(afterNarrow, asked(0))} occurrence(s)`);
 check("the composer still redraws after a resize", afterWide.includes("describe a change"));
 

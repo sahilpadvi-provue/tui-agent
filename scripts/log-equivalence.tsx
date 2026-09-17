@@ -10,7 +10,7 @@
  * reached into the runtime.
  */
 import React from "react";
-import { render } from "ink";
+import { mount } from "../src/ui/primitives.tsx";
 import { PassThrough, Writable } from "node:stream";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
@@ -73,15 +73,15 @@ async function runOnce(withUi: boolean): Promise<AgentEvent[]> {
     ask: async () => ({ kind: "allow", scope: "once" }),
   });
 
-  let app: ReturnType<typeof render> | undefined;
+  let app: ReturnType<typeof mount> | undefined;
   if (withUi) {
     const stdout = Object.assign(new Writable({ write(_c, _e, cb) { cb(); return true; } }),
       { columns: 92, rows: 30, isTTY: true });
     const stdin = Object.assign(new PassThrough(), { isTTY: true, setRawMode() {}, ref() {}, unref() {} });
-    app = render(
+    app = mount(
       <App bus={bus} cwd={dir} model="scripted" version="0.1.0" backend="scripted"
            sandbox="off" busy onSubmit={() => {}} onCommand={() => {}} onCancel={() => {}} onPermission={() => {}} />,
-      { stdout: stdout as any, stdin: stdin as any, patchConsole: false },
+      { stdout: stdout as any, stdin: stdin as any },
     );
   }
 

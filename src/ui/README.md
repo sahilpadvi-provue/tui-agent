@@ -12,7 +12,9 @@ The terminal client. One subscriber to the event bus among several that could ex
 
 ## Rules
 
-**Only `primitives.tsx` imports `ink`.** Every screen is written against `Stack`, `Label` and our hooks. This is what makes the renderer swappable for OpenTUI or a fork — and it survives only if nobody reaches for `ink` directly. Check imports in review.
+**Only `primitives.tsx` knows how a frame reaches the terminal.** Every screen is written against `Stack`, `Label` and our hooks. That is what made replacing Ink a rewrite of one file rather than of the UI, and `App.tsx` did not change a line for it. It survives only if nobody reaches past it. Check imports in review.
+
+**The renderer is ours now, in `render/`.** A grid the height of the content, with the terminal as a window onto its last rows; rows above that window are never addressed, so settled output still lands in the terminal's own scrollback. There is no erase-by-line-count step, which is what ink#907 was, so narrowing cannot leave ghosts. Ink remains a dev dependency purely so `scripts/render-check.tsx` can drive it as a control arm and show the difference rather than assert it.
 
 **The UI never calls the runtime.** It subscribes to the bus and receives `onSubmit` / `onCancel` / `onPermission` from `cli/`. It holds no reference to the loop, executor or model.
 
@@ -22,7 +24,7 @@ The terminal client. One subscriber to the event bus among several that could ex
 
 **The conversation still lives in `model.ts`, not the terminal.** Scrollback is where settled output is *displayed*; the event log remains the source of truth. Never read state back off the screen.
 
-**Full-width chrome in the live region leaks rows on resize, and we accept that.** The composer's rules are the width of the terminal, and Ink erases its last frame by logical line count while the terminal re-wraps to physical rows — so every narrowing leaves two rows behind. See the README for the mechanism. Removing the chrome fixes it and was rejected on how it looked; the real fix is a cell-buffer renderer. `scripts/reflow-check.tsx` measures it and is expected to fail.
+**Full-width chrome is fine now, and that is the point of the renderer.** The composer's two rules are the width of the terminal, which under Ink was exactly what leaked on every narrowing: it erased its last frame by logical line count while the terminal had already re-wrapped to physical rows. Removing the chrome fixed it and was rejected on how it looked. Owning the cells fixed it without that trade. `scripts/reflow-check.tsx` measured the old defect and is gone with it; `scripts/render-check.tsx` now shows the difference with Ink driven as a control arm.
 
 **Inline, not alternate screen.** Settled output is printed once into the user's own scrollback, where they can scroll, search and copy it with the terminal they already know. An app that owns the whole screen cannot hand its history back. The accepted cost is ink#907: narrowing the terminal can leave ghost lines, and there is no upstream fix.
 

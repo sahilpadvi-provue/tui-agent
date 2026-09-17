@@ -8,8 +8,8 @@
  * the right place and edits in the wrong one.
  */
 import React from "react";
-import { render } from "ink";
-import { PassThrough, Writable } from "node:stream";
+import { mount } from "../src/ui/primitives.tsx";
+import { screen } from "./vt.ts";
 import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -32,25 +32,25 @@ const CTRL = (letter: string) => String.fromCharCode(letter.charCodeAt(0) - 96);
 const ENTER = "\r";
 
 async function drive(keys: string[], width = 100) {
-  let out = "";
   const sent: string[] = [];
   const ran: string[] = [];
-  const so = Object.assign(new Writable({ write(c, _e, cb) { out += String(c); cb(); return true; } }),
-    { columns: width, rows: 40, isTTY: true });
-  const si = Object.assign(new PassThrough(), { isTTY: true, setRawMode() {}, ref() {}, unref() {} });
-  const app = render(
+  // Read the displayed screen, not the byte stream. Splitting output on
+  // ESC[?2026h was reading Ink's synchronized-output marker, which a cell
+  // renderer never emits -- so every check that looked at a frame silently
+  // saw nothing at all.
+  const vt = screen(width, 40);
+  const app = mount(
     <App bus={new EventBus()} cwd={ws} model="m" version="0" backend="b" sandbox="off" busy={false}
          onSubmit={(t) => sent.push(t)} onCommand={(c) => ran.push(c)} onCancel={() => {}} onPermission={() => {}} />,
-    { stdout: so as any, stdin: si as any, patchConsole: false },
+    { stdout: vt.stdout, stdin: vt.stdin },
   );
   await new Promise((r) => setTimeout(r, 110));
-  for (const k of keys) { si.write(k); await new Promise((r) => setTimeout(r, 45)); }
+  for (const k of keys) { vt.stdin.write(k); await new Promise((r) => setTimeout(r, 45)); }
   await new Promise((r) => setTimeout(r, 120));
+  const frame = vt.all().join("\n");
   app.unmount();
   await app.waitUntilExit();
-  const frames = out.split("\x1b[?2026h");
-  const frame = (frames[frames.length - 1] ?? "").replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "");
-  return { sent, ran, frame, raw: out };
+  return { sent, ran, frame, raw: vt.raw() };
 }
 
 /** What the composer held, read back through the one path that reveals it. */

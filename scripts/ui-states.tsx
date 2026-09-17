@@ -1,6 +1,6 @@
 /** Renders each interaction state so spacing can be judged in all of them. */
 import React from "react";
-import { render } from "ink";
+import { mount } from "../src/ui/primitives.tsx";
 import { PassThrough, Writable } from "node:stream";
 import { EventBus } from "../src/core/bus.ts";
 import { App } from "../src/ui/App.tsx";
@@ -13,10 +13,10 @@ async function frame(name: string, busy: boolean, drive: (e: (x: any) => void) =
     { columns: COLS, rows: 40, isTTY: true });
   const stdin = Object.assign(new PassThrough(), { isTTY: true, setRawMode() {}, ref() {}, unref() {} });
   const bus = new EventBus();
-  const app = render(
+  const app = mount(
     <App bus={bus} cwd="/Users/sahilpadvi/Desktop/TUI" model="qwen3:8b" version="0.1.0" backend="ollama" sandbox="seatbelt" branch="main" busy={busy}
          onSubmit={() => {}} onCommand={() => {}} onCancel={() => {}} onPermission={() => {}} />,
-    { stdout: stdout as any, stdin: stdin as any, patchConsole: false },
+    { stdout: stdout as any, stdin: stdin as any },
   );
   drive((x) => bus.emit({ sessionId: "s", ...x }));
   await new Promise((r) => setTimeout(r, 150));

@@ -3,7 +3,7 @@
  * touches only the row that changed.
  */
 import React, { useEffect, useState } from "react";
-import { Stack, Label, Settled, mount } from "../src/ui/render/primitives.tsx";
+import { Stack, Label, Settled, mount } from "../src/ui/primitives.tsx";
 
 let buf = "";
 const out: any = Object.assign(

@@ -15,19 +15,18 @@
     "quiet:check": "bun run scripts/quiet-resize-check.tsx",
     "input:check": "bun run scripts/input-check.tsx",
     "md:check": "bun run scripts/markdown-check.ts",
-    "app:check": "bun --preload ./scripts/cells-preload.ts scripts/app-cells-smoke.tsx",
-    "tui:cells": "bun --preload ./scripts/cells-preload.ts src/cli/tui.tsx",
+    "app:check": "bun run scripts/app-cells-smoke.tsx",
     "sessions": "bun run src/cli/sessions.ts",
     "evals": "bun run evals/run.ts",
     "build": "bun build --compile src/cli/tui.tsx --outfile dist/tui --external react-devtools-core && bun build --compile src/cli/headless.ts --outfile dist/agent"
   },
   "dependencies": {
-    "ink": "^7.1.1",
     "react": "^19.2.0",
     "react-reconciler": "^0.33.0"
   },
   "devDependencies": {
     "@types/bun": "^1.4.2",
+    "ink": "^7.1.1",
     "@types/react": "^19.2.0",
     "typescript": "^5.7.0"
   }

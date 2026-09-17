@@ -5,13 +5,13 @@
     "": {
       "name": "tui-agent",
       "dependencies": {
-        "ink": "^7.1.1",
         "react": "^19.2.0",
         "react-reconciler": "^0.33.0",
       },
       "devDependencies": {
         "@types/bun": "^1.4.2",
         "@types/react": "^19.2.0",
+        "ink": "^7.1.1",
         "typescript": "^5.7.0",
       },
     },

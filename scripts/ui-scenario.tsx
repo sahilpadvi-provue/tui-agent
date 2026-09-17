@@ -4,7 +4,7 @@
  * short placeholders.
  */
 import React from "react";
-import { render } from "ink";
+import { mount } from "../src/ui/primitives.tsx";
 import { PassThrough, Writable } from "node:stream";
 import { EventBus } from "../src/core/bus.ts";
 import { App } from "../src/ui/App.tsx";
@@ -16,10 +16,10 @@ const stdout = Object.assign(new Writable({ write(c, _e, cb) { buf += String(c);
 const stdin = Object.assign(new PassThrough(), { isTTY: true, setRawMode() {}, ref() {}, unref() {} });
 
 const bus = new EventBus();
-const app = render(
+const app = mount(
   <App bus={bus} cwd="/Users/sahilpadvi/Desktop/TUI" model="qwen3:8b" version="0.1.0" backend="ollama" sandbox="seatbelt" branch="main" busy={false}
        onSubmit={() => {}} onCommand={() => {}} onCancel={() => {}} onPermission={() => {}} />,
-  { stdout: stdout as any, stdin: stdin as any, patchConsole: false },
+  { stdout: stdout as any, stdin: stdin as any },
 );
 
 const e = (x: any) => bus.emit({ sessionId: "s", ...x });

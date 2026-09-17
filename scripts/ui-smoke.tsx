@@ -1,6 +1,6 @@
 /** Renders the App against a fake bus and prints the final frame. */
 import React from "react";
-import { render } from "ink";
+import { mount } from "../src/ui/primitives.tsx";
 import { EventBus } from "../src/core/bus.ts";
 import { App } from "../src/ui/App.tsx";
 
@@ -18,10 +18,10 @@ const fakeStdin = Object.assign(new PassThrough(), {
   ref() {}, unref() {},
 });
 
-const app = render(
+const app = mount(
   <App bus={bus} cwd="/tmp/demo-repo" model="qwen3:8b" version="0.1.0" backend="ollama" sandbox="seatbelt" branch="main" busy={false}
        onSubmit={() => {}} onCommand={() => {}} onCancel={() => {}} onPermission={() => {}} />,
-  { stdout: fakeStdout as any, stdin: fakeStdin as any, interactive: false, patchConsole: false },
+  { stdout: fakeStdout as any, stdin: fakeStdin as any },
 );
 
 const emit = (e: any) => bus.emit({ sessionId: sid, ...e });

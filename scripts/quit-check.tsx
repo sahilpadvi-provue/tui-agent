@@ -1,6 +1,6 @@
 /** Ctrl-C when idle must quit: once to arm, twice to exit. */
 import React from "react";
-import { render } from "ink";
+import { mount } from "../src/ui/primitives.tsx";
 import { PassThrough, Writable } from "node:stream";
 import { EventBus } from "../src/core/bus.ts";
 import { App } from "../src/ui/App.tsx";
@@ -10,10 +10,10 @@ const stdout = Object.assign(new Writable({ write(c, _e, cb) { buf += String(c);
   { columns: 90, rows: 24, isTTY: true });
 const stdin = Object.assign(new PassThrough(), { isTTY: true, setRawMode() {}, ref() {}, unref() {} });
 
-const app = render(
+const app = mount(
   <App bus={new EventBus()} cwd="/tmp" model="m" version="0.1.0" backend="ollama" sandbox="seatbelt" branch="main" busy={false}
        onSubmit={() => {}} onCommand={() => {}} onCancel={() => {}} onPermission={() => {}} />,
-  { stdout: stdout as any, stdin: stdin as any, patchConsole: false, exitOnCtrlC: false },
+  { stdout: stdout as any, stdin: stdin as any },
 );
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));

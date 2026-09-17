@@ -12,7 +12,7 @@
  * into the terminal's own scrollback and is deliberately unreachable.
  */
 
-import type { Color } from "../primitives.tsx";
+import type { Color } from "./types.ts";
 import { GUTTER, STEP, type Line, type Span } from "../layout.ts";
 import { blockStyle, segments } from "../markdown.tsx";
 import { FILL } from "./host.ts";

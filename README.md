@@ -28,33 +28,46 @@ early compaction for testing.
 
 `MODEL=<name>` overrides the Ollama model.
 
-## A known defect: the live region leaks rows on resize
+## The renderer
 
-Narrowing the terminal leaves copies of the composer and the working indicator
-stacked down the screen. Redraw fixes it; the session is unaffected.
+The terminal UI is drawn by our own cell renderer, in `src/ui/render/`. It
+holds a grid the height of everything rendered so far and treats the terminal
+as a window onto that grid's last rows. Rows above the window are never
+addressed again, so settled output reaches the terminal's own scrollback and
+stays searchable and copyable with the keys you already use.
 
-Ink erases its previous live frame with `eraseLines(lines.length)` — a count of
-*logical* lines. The terminal has already re-wrapped that frame to the new
-width, so it occupies more *physical* rows than it has lines. Ink erases the
-smaller number and the surplus survives. One row leaks per line that was wider
-than the new width; we have two such lines (the composer's rules), so two rows
-per narrowing step. This is [ink#907](https://github.com/vadimdemedes/ink/issues/907),
-closed upstream as not planned.
+It replaced Ink, which had one defect we could not fix from outside. Ink builds
+a frame as a string and erases it by counting newlines, and that count stops
+being a row count the moment the terminal re-wraps a line wider than the new
+width. Narrowing therefore left a stack of ghost composers down the screen.
+That is [ink#907](https://github.com/vadimdemedes/ink/issues/907), closed
+upstream as not planned, and it is worth being precise about why: upstream did
+fix the larger resize bug, in
+[#828](https://github.com/vadimdemedes/ink/pull/828), which ships in the 7.1.1
+we were using. That fix is exact only while nothing in the redrawn region
+reaches the terminal's width. Our composer draws two full-width rules, so we
+were outside its precondition, and the only fixes were to drop the chrome --
+tried, and it cost the composer's border and the footer's right edge -- or to
+own the cells. A renderer that addresses rows has no erase-by-line-count step
+to miscount.
 
-It cannot be patched from outside: repainting still has to erase by line count
-first. The two available fixes are to stop drawing anything the width of the
-terminal — tried, and it cost the composer's border and the footer's right
-edge, which was not worth it — or to move to a cell-buffer renderer that diffs
-a grid and addresses the cursor absolutely, which has no erase-by-line-count
-step at all. OpenTUI is that shape, and it is why only `primitives.tsx` imports
-Ink.
+Ink remains a dev dependency so `scripts/render-check.tsx` can drive it as a
+control arm on the same frames, which makes the difference a measurement
+rather than a claim.
 
-`scripts/reflow-check.tsx` measures the cost and is expected to fail. It is not
-in the gate suite.
+The switch cost one file. `src/ui/primitives.tsx` is the only module that knows
+how a frame reaches the terminal, and `App.tsx` did not change a line.
 
-What *is* fixed is the volume: reasoning deltas no longer touch view state, so
-a turn went from 2,000 redraws of identical characters to none. Fewer frames
-means fewer chances to leak.
+What it also bought, measured on the same 500-message transcript:
+
+|  | Ink | cells |
+| --- | --- | --- |
+| bytes written | 1.49 MB | 0.05 MB |
+| heap after | 56.8 MB | 15.3 MB |
+
+Still a subset. The key parser covers what the app reads and is gated, but it
+is not Ink's four hundred lines: a key nobody has asked for yet will not work
+until someone adds it.
 
 ## Commands
 

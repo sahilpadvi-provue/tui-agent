@@ -3,8 +3,8 @@
  * visible in the transcript, recorded in the log, and invisible to the model.
  */
 import React from "react";
-import { render } from "ink";
-import { PassThrough, Writable } from "node:stream";
+import { mount } from "../src/ui/primitives.tsx";
+import { screen } from "./vt.ts";
 import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -76,22 +76,19 @@ check("commands never enter the model's conversation",
   !messages.some((m) => m.text.includes("…")), JSON.stringify(messages.map((m) => m.text).slice(-2)));
 
 // And they are visible on screen.
-let buf = "";
-const stdout = Object.assign(new Writable({ write(c, _e, cb) { buf += String(c); cb(); return true; } }),
-  { columns: 92, rows: 30, isTTY: true });
-const stdin = Object.assign(new PassThrough(), { isTTY: true, setRawMode() {}, ref() {}, unref() {} });
+const vt = screen(92, 30);
 const bus = new EventBus();
-const app = render(
+const app = mount(
   <App bus={bus} cwd={ws} model="m" version="0" backend="b" sandbox="off" busy={false}
        onSubmit={() => {}} onCommand={() => {}} onCancel={() => {}} onPermission={() => {}} />,
-  { stdout: stdout as any, stdin: stdin as any, patchConsole: false },
+  { stdout: vt.stdout, stdin: vt.stdin },
 );
 await new Promise((r) => setTimeout(r, 100));
 bus.emit({ sessionId: "s", type: "local.invoked", command: "checkpoints", args: "", ok: true, output: "  abc1234  before shell" });
 await new Promise((r) => setTimeout(r, 150));
+const plain = vt.all().join("\n");
 app.unmount();
 await app.waitUntilExit();
-const plain = buf.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "");
 check("a command is rendered in the transcript", plain.includes("/checkpoints"), plain.slice(-120));
 check("its output is rendered", plain.includes("before shell"));
 
@@ -102,22 +99,22 @@ check("its output is rendered", plain.includes("before shell"));
 
 async function afterTyping(typed: string, width = 100) {
   let out = "";
-  const so = Object.assign(new Writable({ write(c, _e, cb) { out += String(c); cb(); return true; } }),
-    { columns: width, rows: 30, isTTY: true });
-  const si = Object.assign(new PassThrough(), { isTTY: true, setRawMode() {}, ref() {}, unref() {} });
+  // The displayed screen, not the byte stream: splitting on ESC[?2026h read
+  // Ink's synchronized-output marker, which a cell renderer never emits.
+  const vt = screen(width, 30);
   const b = new EventBus();
-  const a = render(
+  const a = mount(
     <App bus={b} cwd={ws} model="m" version="0" backend="b" sandbox="off" busy={false}
          onSubmit={() => {}} onCommand={() => {}} onCancel={() => {}} onPermission={() => {}} />,
-    { stdout: so as any, stdin: si as any, patchConsole: false },
+    { stdout: vt.stdout, stdin: vt.stdin },
   );
   await new Promise((r) => setTimeout(r, 90));
-  for (const ch of typed) { si.write(ch); await new Promise((r) => setTimeout(r, 20)); }
+  for (const ch of typed) { vt.stdin.write(ch); await new Promise((r) => setTimeout(r, 20)); }
   await new Promise((r) => setTimeout(r, 160));
+  const shown = vt.all().join("\n");
   a.unmount();
   await a.waitUntilExit();
-  const frames = out.split("\x1b[?2026h");
-  return (frames[frames.length - 1] ?? "").replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "");
+  return shown;
 }
 
 const all = await afterTyping("/");
@@ -151,22 +148,19 @@ async function drive(keys: string[], width = 100) {
   let out = "";
   const invoked: string[] = [];
   const prompted: string[] = [];
-  const so = Object.assign(new Writable({ write(c, _e, cb) { out += String(c); cb(); return true; } }),
-    { columns: width, rows: 30, isTTY: true });
-  const si = Object.assign(new PassThrough(), { isTTY: true, setRawMode() {}, ref() {}, unref() {} });
+  const vt = screen(width, 30);
   const b = new EventBus();
-  const a = render(
+  const a = mount(
     <App bus={b} cwd={ws} model="m" version="0" backend="b" sandbox="off" busy={false}
          onSubmit={(t) => prompted.push(t)} onCommand={(c) => invoked.push(c)} onCancel={() => {}} onPermission={() => {}} />,
-    { stdout: so as any, stdin: si as any, patchConsole: false },
+    { stdout: vt.stdout, stdin: vt.stdin },
   );
   await new Promise((r) => setTimeout(r, 110));
-  for (const k of keys) { si.write(k); await new Promise((r) => setTimeout(r, 55)); }
+  for (const k of keys) { vt.stdin.write(k); await new Promise((r) => setTimeout(r, 55)); }
   await new Promise((r) => setTimeout(r, 130));
+  const last = vt.lines().join("\n");
   a.unmount();
   await a.waitUntilExit();
-  const frames = out.split("\x1b[?2026h");
-  const last = (frames[frames.length - 1] ?? "").replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "");
   const highlighted = last.split("\n").filter((l) => l.trim().startsWith("\u203a") && l.includes("/"));
   const prompt = last.split("\n").find((l) => l.includes("\u203a ") && l.includes("\u258f")) ?? "";
   return { invoked, prompted, highlighted: highlighted.map((l) => l.trim().slice(2).split(" ")[0]), prompt: prompt.trim() };

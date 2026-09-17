@@ -1,6 +1,6 @@
 /** Stage 2 gate: render cost on a long transcript under streaming. */
 import React from "react";
-import { render } from "ink";
+import { mount } from "../src/ui/primitives.tsx";
 import { PassThrough } from "node:stream";
 import { Writable } from "node:stream";
 import { EventBus } from "../src/core/bus.ts";
@@ -18,11 +18,10 @@ const stdout = Object.assign(
 const stdin = Object.assign(new PassThrough(), { isTTY: true, setRawMode() {}, ref() {}, unref() {} });
 
 const bus = new EventBus();
-const app = render(
+const app = mount(
   <App bus={bus} cwd="/tmp/bench" model="bench" version="0.1.0" backend="ollama" sandbox="seatbelt" branch="main" busy={true}
        onSubmit={() => {}} onCommand={() => {}} onCancel={() => {}} onPermission={() => {}} />,
-  { stdout: stdout as any, stdin: stdin as any, patchConsole: false, incrementalRendering: true,
-    maxFps: 60, onRender: () => { frames++; } },
+  { stdout: stdout as any, stdin: stdin as any, onRender: () => { frames++; } },
 );
 
 const emit = (e: any) => bus.emit({ sessionId: "bench", ...e });

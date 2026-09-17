@@ -13,7 +13,7 @@
  */
 import React, { useState } from "react";
 import { PassThrough, Writable } from "node:stream";
-import { mount, useKeys, useStdout, Label, Stack } from "../src/ui/render/primitives.tsx";
+import { mount, useKeys, useStdout, Label, Stack } from "../src/ui/primitives.tsx";
 
 let failures = 0;
 const check = (name: string, ok: boolean, detail = "") => {

@@ -3,7 +3,7 @@ import React from "react";
 import { PassThrough, Writable } from "node:stream";
 import { EventBus } from "../src/core/bus.ts";
 import { App } from "../src/ui/App.tsx";
-import { mount } from "../src/ui/render/primitives.tsx";
+import { mount } from "../src/ui/primitives.tsx";
 import { Term } from "./vt.ts";
 
 // Escape sequences carry the row boundaries, so the output has to be played

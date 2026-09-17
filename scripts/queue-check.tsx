@@ -7,7 +7,7 @@
  * goes idle.
  */
 import React from "react";
-import { render } from "ink";
+import { mount } from "../src/ui/primitives.tsx";
 import { PassThrough, Writable } from "node:stream";
 import { EventBus } from "../src/core/bus.ts";
 import { App } from "../src/ui/App.tsx";
@@ -24,7 +24,7 @@ const props = (busy: boolean) => ({
   busy, onSubmit: (t: string) => submitted.push(t), onCommand: () => {}, onCancel: () => {}, onPermission: () => {},
 });
 
-const app = render(<App {...props(true)} />, { stdout: stdout as any, stdin: stdin as any, patchConsole: false });
+const app = mount(<App {...props(true)} />, { stdout: stdout as any, stdin: stdin as any });
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const plain = () => buf.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "");
 

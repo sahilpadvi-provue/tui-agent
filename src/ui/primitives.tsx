@@ -1,105 +1,111 @@
 /**
- * The ONLY module that imports Ink.
+ * The ONLY module that knows how a frame reaches the terminal.
  *
- * Every screen is written against these components, so replacing the
- * renderer (OpenTUI, or a fork) is a rewrite of this file rather than of
- * the UI. That property is the reason the Ink decision is reversible, and
- * it survives only if nothing else imports "ink" directly.
+ * Every screen is written against `Stack`, `Label` and these hooks, which is
+ * what made replacing Ink a rewrite of this file rather than of the UI. It now
+ * drives the cell renderer in `./render`: a grid the height of the content,
+ * with the terminal as a window onto its last rows. Nothing above that window
+ * is ever addressed, so settled output still reaches the terminal's own
+ * scrollback, and a resize cannot leave a stack of ghosts behind -- there is
+ * no erase-by-line-count step to miscount, which is what ink#907 was.
+ *
+ * Ink is still a dependency, for the gate that drives it as a control.
  */
-import React, { type ReactNode, type RefObject } from "react";
-import {
-  Box as InkBox,
-  Text as InkText,
-  Static as InkStatic,
-  useInput as inkUseInput,
-  usePaste as inkUsePaste,
-  useApp as inkUseApp,
-  useStdout as inkUseStdout,
-  useBoxMetrics as inkUseBoxMetrics,
-  render as inkRender,
-  type DOMElement,
-} from "ink";
 
-export type Color =
-  | "black" | "red" | "green" | "yellow" | "blue"
-  | "magenta" | "cyan" | "white" | "gray" | "grey";
+import React, {
+  createContext, useContext, useEffect, useMemo, useRef, useState,
+  type ReactNode,
+} from "react";
+import { LegacyRoot } from "react-reconciler/constants.js";
+import { createRoot, reconciler, toLines, type Root } from "./render/host.ts";
+import { paint, type Screen } from "./render/screen.ts";
+import { renderFrame, HIDE_CURSOR, SHOW_CURSOR } from "./render/diff.ts";
+import {
+  Parser, ENABLE_PASTE, DISABLE_PASTE, type Key, type KeyEvent,
+} from "./render/input.ts";
+
+declare module "react" {
+  namespace JSX {
+    interface IntrinsicElements {
+      "tui-box": {
+        children?: ReactNode;
+        direction?: "row" | "column";
+        padX?: number;
+        border?: boolean;
+        borderColor?: string;
+        borderDim?: boolean;
+        align?: "start" | "end" | "between";
+      };
+      "tui-text": {
+        children?: ReactNode;
+        color?: string;
+        bg?: string;
+        dim?: boolean;
+        bold?: boolean;
+        italic?: boolean;
+      };
+    }
+  }
+}
+
+import type { Color } from "./render/types.ts";
+export type { Color };
 
 export type StackProps = {
   children?: ReactNode;
   direction?: "row" | "column";
-  gap?: number;
   padX?: number;
-  padY?: number;
-  width?: number | string;
-  height?: number;
-  grow?: number;
-  shrink?: number;
-  clip?: boolean;
-  /** Push children along the main axis. "between" splits left and right. */
-  align?: "start" | "end" | "between";
+  /** A rule above and below. `borderSides` is accepted and ignored: the only
+   *  value the UI asks for is "y", which is what a rule already is. */
   border?: boolean;
-  /** Which edges the border draws. Defaults to all four. */
   borderSides?: "all" | "y";
-  borderColor?: Color;
+  borderColor?: string;
   borderDim?: boolean;
-  ref?: RefObject<DOMElement | null>;
+  /** "between" pushes the last child to the right edge. */
+  align?: "start" | "end" | "between";
 };
 
 export function Stack({
-  children, direction = "column", gap, padX, padY, width, height,
-  grow, shrink, clip, align, border, borderSides = "all", borderColor, borderDim, ref,
+  children, direction = "column", padX, border, borderColor, borderDim, align,
 }: StackProps) {
   return (
-    <InkBox
-      ref={ref}
-      flexDirection={direction}
-      gap={gap}
-      paddingX={padX}
-      paddingY={padY}
-      width={width}
-      height={height}
-      flexGrow={grow}
-      flexShrink={shrink}
-      justifyContent={
-        align === "end" ? "flex-end" : align === "between" ? "space-between" : undefined
-      }
-      overflowY={clip ? "hidden" : undefined}
-      borderStyle={border ? "round" : undefined}
-      borderLeft={border && borderSides === "all"}
-      borderRight={border && borderSides === "all"}
+    <tui-box
+      direction={direction}
+      padX={padX}
+      border={border}
       borderColor={borderColor}
-      borderDimColor={borderDim}
+      borderDim={borderDim}
+      align={align}
     >
       {children}
-    </InkBox>
+    </tui-box>
   );
 }
 
 export type LabelProps = {
   children?: ReactNode;
   color?: Color | string;
-  /** Fills the run's cells. Used to band a whole row, never for emphasis. */
   bg?: string;
   dim?: boolean;
   bold?: boolean;
   italic?: boolean;
-  wrap?: "wrap" | "truncate" | "truncate-end";
 };
 
-export function Label({ children, color, bg, dim, bold, italic, wrap }: LabelProps) {
+export function Label({ children, color, bg, dim, bold, italic }: LabelProps) {
   return (
-    <InkText color={color} backgroundColor={bg} dimColor={dim} bold={bold} italic={italic} wrap={wrap}>
+    <tui-text color={color} bg={bg} dim={dim} bold={bold} italic={italic}>
       {children}
-    </InkText>
+    </tui-text>
   );
 }
 
 /**
- * Append-only region. Items handed to it are printed once and never
- * re-rendered, so a long transcript costs nothing per frame and lands in the
- * terminal's real scrollback. Only ever append to `items`; mutating or
- * re-keying it reprints everything, which is the documented way agent TUIs
- * collapse at scale.
+ * No separate append-only channel.
+ *
+ * Ink's `Static` exists because a printed row is unrecoverable, so anything
+ * settled has to leave the tree. Here the grid keeps every row and the diff
+ * declines to address the ones above the viewport, which reaches the same
+ * place by not needing the mechanism.
  */
 export function Settled<T>({
   items,
@@ -108,33 +114,179 @@ export function Settled<T>({
   items: T[];
   render: (item: T, index: number) => ReactNode;
 }) {
-  return <InkStatic items={items}>{(item, i) => render(item, i)}</InkStatic>;
+  return <tui-box direction="column">{items.map((item, i) => render(item, i))}</tui-box>;
 }
 
-export const useKeys = inkUseInput;
-/**
- * Pasted text, on its own channel.
- *
- * Mounting this is what turns on the terminal's bracketed paste mode, which
- * is the only thing that tells a pasted line break apart from a pressed
- * Enter. Without it the two are the same byte and a paste can submit itself
- * halfway through -- see `scripts/keys-check.tsx`.
- */
-export const usePaste = inkUsePaste;
-export const useApp = inkUseApp;
-export const useStdout = inkUseStdout;
-export const useMetrics = inkUseBoxMetrics;
-export type { DOMElement };
 
-export function mount(node: ReactNode) {
-  return inkRender(node, {
-    // Inline, not alternate screen: settled output belongs in the user's own
-    // scrollback, where they can scroll, search and copy it with the terminal
-    // they already know. The cost is ink#907 (ghost lines when the terminal
-    // narrows) -- accepted, because an app that owns the whole screen cannot
-    // hand its history back.
-    incrementalRendering: true,
-    exitOnCtrlC: false, // Ctrl-C cancels the agent turn, it does not quit
-    maxFps: 60,
-  });
+type Session = {
+  out: NodeJS.WriteStream;
+  /** Mirrors `out.columns`, so a resize changes the context value itself. */
+  columns?: number;
+  exit: () => void;
+  keys: Set<(e: KeyEvent) => void>;
+  pastes: Set<(text: string) => void>;
+};
+
+const SessionContext = createContext<Session | null>(null);
+
+function useSession(): Session {
+  const s = useContext(SessionContext);
+  if (!s) throw new Error("hook used outside mount()");
+  return s;
+}
+
+/**
+ * Width is read during render, so a resize has to re-render rather than just
+ * repaint -- every wrapped line and every elastic field is derived from it.
+ *
+ * The width therefore goes into the context value, and a resize replaces that
+ * value. Bumping a counter here instead re-renders only this component:
+ * `children` is the same element on the way back out, React bails out of the
+ * subtree, no host node changes and nothing repaints. The symptom is narrow
+ * and easy to miss -- on an idle screen a resize does nothing until the next
+ * keystroke, while anything with a timer running looks fine, because its next
+ * tick re-renders and picks the new width up. `scripts/quiet-resize-check.tsx`
+ * is the guard, and it asserts on a component that has no other reason to
+ * render, which is the only arrangement that can tell the two apart.
+ */
+function Session({ value, children }: { value: Session; children: ReactNode }) {
+  const [columns, setColumns] = useState(value.out.columns);
+  useEffect(() => {
+    const onResize = () => setColumns(value.out.columns);
+    value.out.on("resize", onResize);
+    return () => {
+      value.out.off("resize", onResize);
+    };
+  }, [value]);
+  const session = useMemo(() => ({ ...value, columns }), [value, columns]);
+  return <SessionContext.Provider value={session}>{children}</SessionContext.Provider>;
+}
+
+/** Subscribes once and calls through a ref, so a new closure each render is free. */
+function useSubscription<T>(set: Set<(v: T) => void>, fn: (v: T) => void): void {
+  const ref = useRef(fn);
+  ref.current = fn;
+  useEffect(() => {
+    const call = (v: T) => ref.current(v);
+    set.add(call);
+    return () => {
+      set.delete(call);
+    };
+  }, [set]);
+}
+
+export function useKeys(fn: (char: string, key: Key) => void): void {
+  useSubscription(useSession().keys, (e: KeyEvent) => fn(e.char, e.key));
+}
+
+export function usePaste(fn: (text: string) => void): void {
+  useSubscription(useSession().pastes, fn);
+}
+
+export function useStdout(): { stdout: NodeJS.WriteStream } {
+  return { stdout: useSession().out };
+}
+
+export function useApp(): { exit: () => void } {
+  return { exit: useSession().exit };
+}
+
+export type Instance = {
+  rerender: (node: ReactNode) => void;
+  unmount: () => void;
+  waitUntilExit: () => Promise<void>;
+};
+
+export type MountOptions = {
+  stdout?: NodeJS.WriteStream;
+  stdin?: NodeJS.ReadStream;
+  /** Called once per frame actually written. `scripts/bench.tsx` counts them. */
+  onRender?: () => void;
+};
+
+export function mount(node: ReactNode, options: MountOptions = {}): Instance {
+  const out = options.stdout ?? process.stdout;
+  const input = options.stdin ?? process.stdin;
+
+  const root: Root = createRoot();
+  const container = reconciler.createContainer(
+    root, LegacyRoot, null, false, null, "tui", () => {}, () => {}, () => {}, null,
+  );
+
+  let prev: Screen | null = null;
+  let scheduled = false;
+  let unmounted = false;
+  let done = () => {};
+  const exited = new Promise<void>((r) => { done = r; });
+
+  const draw = () => {
+    scheduled = false;
+    // Unmounting empties the tree, and painting that erases the final frame --
+    // which for an inline renderer means the session wipes itself on exit.
+    if (unmounted) return;
+    const next = paint(toLines(root), out.columns ?? 80);
+    out.write(renderFrame(prev, next, out.rows ?? 24));
+    prev = next;
+    options.onRender?.();
+  };
+
+  // React commits synchronously here, and a single update can commit more than
+  // once; coalescing to a microtask keeps one frame per turn of the loop.
+  root.onRender = () => {
+    if (scheduled) return;
+    scheduled = true;
+    queueMicrotask(draw);
+  };
+
+  const session: Session = {
+    out,
+    exit: () => instance.unmount(),
+    keys: new Set(),
+    pastes: new Set(),
+  };
+
+  const parser = new Parser();
+  const onData = (chunk: Buffer | string) => {
+    const { events, pastes } = parser.push(String(chunk));
+    for (const e of events) for (const fn of [...session.keys]) fn(e);
+    for (const text of pastes) for (const fn of [...session.pastes]) fn(text);
+  };
+
+  const raw = input.isTTY === true;
+  if (raw) {
+    input.setRawMode(true);
+    input.resume();
+    input.on("data", onData);
+    out.write(ENABLE_PASTE);
+  }
+  out.write(HIDE_CURSOR);
+
+  const rerender = (next: ReactNode) => {
+    reconciler.updateContainerSync(
+      <Session value={session}>{next}</Session>, container, null, null,
+    );
+    reconciler.flushSyncWork();
+  };
+
+  const instance: Instance = {
+    rerender,
+    unmount() {
+      if (unmounted) return;
+      unmounted = true;
+      reconciler.updateContainerSync(null, container, null, null);
+      reconciler.flushSyncWork();
+      if (raw) {
+        input.off("data", onData);
+        input.setRawMode(false);
+        input.pause();
+        out.write(DISABLE_PASTE);
+      }
+      out.write(SHOW_CURSOR + "\n");
+      done();
+    },
+    waitUntilExit: () => exited,
+  };
+
+  rerender(node);
+  return instance;
 }
