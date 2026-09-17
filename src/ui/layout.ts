@@ -53,6 +53,7 @@ export const OUTPUT_LINES = 8;
 export type Span = {
   readonly text: string;
   readonly color?: Color;
+  readonly bg?: string;
   readonly dim?: boolean;
   readonly bold?: boolean;
 };
@@ -60,6 +61,12 @@ export type Span = {
 export type Line = {
   /** Used when `spans` is absent, and for measuring either way. */
   readonly text: string;
+  /** Fills the whole row to the terminal edge. */
+  readonly band?: boolean;
+  /** Draws a full-width rule instead of text. */
+  readonly rule?: boolean;
+  /** Terminal width, needed by anything that fills the row. */
+  readonly width?: number;
   /** Styled runs, left to right. Overrides the line-level styling. */
   readonly spans?: Span[];
   readonly depth?: number;
@@ -158,6 +165,27 @@ export function summariseCall(name: string, args: unknown): string {
       return json === "{}" ? "" : json;
     }
   }
+}
+
+/**
+ * What the tool did, rather than what it is called.
+ *
+ * "shell" and "replace_lines" name the implementation; a reader scanning a
+ * session wants the verb. The tool's own name still identifies it in the log,
+ * where the distinction matters.
+ */
+const VERBS: Record<string, string> = {
+  shell: "Ran",
+  read_file: "Read",
+  write_file: "Wrote",
+  replace_lines: "Edited",
+  edit_file: "Edited",
+  search: "Searched",
+  list_files: "Listed",
+};
+
+export function verbFor(tool: string): string {
+  return VERBS[tool] ?? tool;
 }
 
 /** Shortens a path from the left, keeping the end that identifies it. */

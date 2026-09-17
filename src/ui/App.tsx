@@ -5,7 +5,7 @@ import { Markdown } from "./markdown.tsx";
 import { bannerLines } from "./banner.ts";
 import {
   BLANK, DEPTH, GUTTER, STEP,
-  clip, measureAt, outputLines, shortenPath, styled, summariseCall, wrap,
+  clip, measureAt, outputLines, shortenPath, styled, summariseCall, verbFor, wrap,
   type Line as L,
 } from "./layout.ts";
 import { radiusLines } from "../permissions/policy.ts";
@@ -159,15 +159,22 @@ export function App({
             <Label color={confirmQuit ? "yellow" : busy ? "gray" : "cyan"}>
               {confirmQuit ? "! " : busy ? "\u00b7 " : "\u203a "}
             </Label>
-            <Label dim={busy || confirmQuit}>
-              {confirmQuit
-                ? "ctrl-c again to exit, any key to stay"
-                : busy
-                  ? `working ${formatElapsed(elapsed)} \u00b7 esc to interrupt`
-                  : input
-                    ? input + "\u258f"
-                    : "\u258f describe a change, or ask about the code"}
-            </Label>
+            {confirmQuit ? (
+              <Label color="yellow">ctrl-c again to exit, any key to stay</Label>
+            ) : busy ? (
+              <Label dim>{`working ${formatElapsed(elapsed)} \u00b7 esc to interrupt`}</Label>
+            ) : (
+              <Label>
+                {input}
+                <Label>{"\u258f"}</Label>
+                {/* The hint is not text you typed, so it must not look like
+                    it. An explicit grey reads as absent in a way SGR dim does
+                    not -- dim white is still close to white on many themes. */}
+                {input === "" && (
+                  <Label color="gray">{" describe a change, or ask about the code"}</Label>
+                )}
+              </Label>
+            )}
           </Stack>
         )}
 
@@ -180,12 +187,33 @@ export function App({
   );
 }
 
+/** One step off the terminal's own background: enough to read as a field. */
+const BAND = "#2a2a2a";
+
 /** The one place a depth becomes columns. */
 function Row({ line }: { line: L }) {
   const pad = " ".repeat(GUTTER + (line.depth ?? 0) * STEP);
+  // A rule carries no text, so it has to be handled before the blank-row
+  // guard below -- otherwise it renders as an empty line.
+  if (line.rule) {
+    return <Label dim>{"\u2500".repeat(Math.max(0, line.width ?? 0))}</Label>;
+  }
   // An empty Text renders no row at all, so a blank line is a single space.
   if (!line.text) return <Label> </Label>;
   if (line.md) return <Markdown line={line.text} indent={pad} color={line.color} dim={line.dim} />;
+  if (line.band) {
+    return (
+      <Label bg={BAND}>
+        {pad}
+        {(line.spans ?? [{ text: line.text }]).map((sp, i) => (
+          <Label key={i} bg={BAND} color={sp.color} bold={sp.bold} dim={sp.dim}>
+            {sp.text}
+          </Label>
+        ))}
+        {" ".repeat(Math.max(0, (line.width ?? 0) - pad.length - line.text.length))}
+      </Label>
+    );
+  }
   if (line.spans) {
     return (
       <Label>
@@ -231,7 +259,7 @@ function basename(p: string): string {
  */
 function gapBefore(prev: ViewItem["kind"] | null, next: ViewItem["kind"]): number {
   if (prev === null) return 0;
-  if (next === "user") return 1;
+  if (next === "user") return 0;
   // The request and the work it triggered are different things; running them
   // together makes the agent's first move look like part of the sentence.
   if (prev === "user") return 1;
@@ -244,6 +272,11 @@ function renderRun(items: ViewItem[], term: number, startingAfter: ViewItem["kin
   const out: L[] = [];
   let prev = startingAfter;
   for (const item of items) {
+    // A new request closes the exchange before it with a rule, which reads
+    // more clearly than a blank row for the same one-row cost.
+    if (prev !== null && item.kind === "user") {
+      out.push(BLANK, { text: "", rule: true, width: term }, BLANK);
+    }
     for (let i = 0; i < gapBefore(prev, item.kind); i++) out.push(BLANK);
     out.push(...renderItem(item, term));
     prev = item.kind;
@@ -278,15 +311,19 @@ function renderItem(i: ViewItem, term: number): L[] {
   switch (i.kind) {
     // The request is the loudest thing on screen: it is what everything below
     // it is answering, and the eye should find it without searching.
+    // The request is banded rather than bolded: it is a different kind of
+    // thing from everything under it, not a louder version of the same thing.
     case "user": {
       const w = measureAt(DEPTH.said, term) - 2;
-      return wrap(i.text, w).map((t, n) =>
-        styled(
+      return wrap(i.text, w).map((t, n) => ({
+        ...styled(
           DEPTH.said,
           n === 0 ? { text: "\u203a ", color: "cyan" } : { text: "  " },
-          { text: t, bold: true },
+          { text: t },
         ),
-      );
+        band: true,
+        width: term,
+      }));
     }
 
     case "assistant":
@@ -310,14 +347,15 @@ function renderItem(i: ViewItem, term: number): L[] {
       // longest part and the least often needed -- recedes.
       const mark = i.running ? "\u00b7" : i.ok === false ? "\u2717" : "\u2713";
       const markColor = i.running ? "cyan" : i.ok === false ? "red" : "green";
+      const verb = verbFor(i.name);
       const summary = i.args !== undefined ? summariseCall(i.name, i.args) : "";
-      const room = w - mark.length - i.name.length - 3;
+      const room = w - mark.length - verb.length - 3;
       const out: L[] = [
         styled(
           DEPTH.did,
           { text: `${mark} `, color: markColor },
-          { text: i.name, color: i.ok === false ? "red" : undefined },
-          summary ? { text: `  ${clip(summary, Math.max(8, room))}`, dim: true } : null,
+          { text: verb, bold: true, color: i.ok === false ? "red" : undefined },
+          summary ? { text: ` ${clip(summary, Math.max(8, room))}` } : null,
         ),
       ];
 

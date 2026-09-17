@@ -77,15 +77,17 @@ export function Stack({
 export type LabelProps = {
   children?: ReactNode;
   color?: Color;
+  /** Fills the run's cells. Used to band a whole row, never for emphasis. */
+  bg?: string;
   dim?: boolean;
   bold?: boolean;
   italic?: boolean;
   wrap?: "wrap" | "truncate" | "truncate-end";
 };
 
-export function Label({ children, color, dim, bold, italic, wrap }: LabelProps) {
+export function Label({ children, color, bg, dim, bold, italic, wrap }: LabelProps) {
   return (
-    <InkText color={color} dimColor={dim} bold={bold} italic={italic} wrap={wrap}>
+    <InkText color={color} backgroundColor={bg} dimColor={dim} bold={bold} italic={italic} wrap={wrap}>
       {children}
     </InkText>
   );

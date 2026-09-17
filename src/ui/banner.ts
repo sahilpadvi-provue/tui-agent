@@ -7,6 +7,9 @@ import { styled, type Line } from "./layout.ts";
  * model, and where it is pointed. It is emitted as ordinary transcript lines
  * so it prints once and scrolls away with the rest of the history -- a banner
  * pinned above the prompt would cost those rows for the whole session.
+ *
+ * Labels are aligned and dimmed so the values form a column the eye can read
+ * down without reading the labels at all.
  */
 export function bannerLines(o: {
   version: string;
@@ -15,10 +18,18 @@ export function bannerLines(o: {
   sandbox: string;
   cwd: string;
 }): Line[] {
+  const label = (text: string) => ({ text: text.padEnd(10), dim: true });
+
   return [
-    { text: `● tui-agent ${o.version}`, color: "cyan" },
-    { text: `  ${o.model} · ${o.backend} · ${o.sandbox}`, dim: true },
-    { text: `  ${o.cwd}`, dim: true },
+    styled(
+      0,
+      { text: "● ", color: "cyan" },
+      { text: "tui-agent", bold: true },
+      { text: `  ${o.version}`, dim: true },
+    ),
+    styled(0, label("  model"), { text: o.model }, { text: `  ${o.backend}`, dim: true }),
+    styled(0, label("  sandbox"), { text: o.sandbox, dim: true }),
+    styled(0, label("  cwd"), { text: o.cwd, dim: true }),
     { text: "" },
   ];
 }

@@ -4,7 +4,7 @@ The terminal client. One subscriber to the event bus among several that could ex
 
 ## What lives here
 
-- **`layout.ts`** — the spacing system. Every column and blank row on screen comes from here.
+- **`layout.ts`** — the spacing system, the `Span` type, and the tool verbs. Every column and blank row on screen comes from here.
 - **`primitives.tsx`** — the only module that imports `ink`.
 - **`model.ts`** — view state as a fold over the event stream.
 - **`markdown.tsx`** — inline markdown, so models' `**bold**` is not shown raw.
@@ -43,9 +43,27 @@ Four numbers, in `layout.ts`. Anything new should replace one of them, not join 
       what came back       depth 2 — tool output
 ```
 
-**A blank row is the only separator this UI has**, so it is spent where the reader changes what they are doing: before a new exchange, and when moving from the agent's work back to its answer. Consecutive tool calls are one continuous action and get none — spacing them out is what turns a session into a scroll. The rule lives in `gapBefore()` and depends only on an item and the one before it, which is what keeps the settled list append-only for `Static`.
+**A rule closes an exchange; a blank row separates within one.** The rule costs the same single row a blank would have and reads as a harder boundary, which is what a new request is.
+
+**A blank row is the separator within an exchange**, so it is spent where the reader changes what they are doing: before a new exchange, and when moving from the agent's work back to its answer. Consecutive tool calls are one continuous action and get none — spacing them out is what turns a session into a scroll. The rule lives in `gapBefore()` and depends only on an item and the one before it, which is what keeps the settled list append-only for `Static`.
 
 **Prose wraps; output and code clip.** Re-flowing a diff or a stack trace to a narrow measure destroys the alignment that makes it readable, so those are truncated at the available width instead.
+
+## Weight
+
+A terminal has one typeface, so hierarchy is colour, dim and bold — nothing else. A row carrying a single style flattens the distinctions worth making, so a `Line` is a sequence of `Span`s:
+
+| | |
+| --- | --- |
+| Request | banded row, cyan `›` |
+| Answer | plain |
+| Tool call | coloured mark · **bold verb** · plain argument |
+| Output, reasoning | dim, under a `└` |
+| Status, chrome | dim |
+
+**Tool lines name the verb, not the tool** — `Ran npm test`, not `shell {"command":"npm test"}`. The tool's own name still identifies it in the log, where the distinction matters. Verbs live in `layout.ts`; a new tool without one falls back to its name.
+
+**A placeholder must not look like text you typed.** It renders in an explicit grey rather than `dim`, because dim white stays close to white on many themes — that exact bug shipped once.
 
 ## Rendering discipline
 
