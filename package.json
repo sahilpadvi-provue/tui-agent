@@ -8,13 +8,19 @@
     "replay": "bun run scripts/replay.ts",
     "typecheck": "tsc --noEmit",
     "tui": "bun run src/cli/tui.tsx",
+    "render:demo": "bun run scripts/render-demo.tsx",
+    "render:check": "bun run scripts/render-check.tsx",
+    "host:check": "bun run scripts/host-smoke.tsx",
+    "app:check": "bun --preload ./scripts/cells-preload.ts scripts/app-cells-smoke.tsx",
+    "tui:cells": "bun --preload ./scripts/cells-preload.ts src/cli/tui.tsx",
     "sessions": "bun run src/cli/sessions.ts",
     "evals": "bun run evals/run.ts",
     "build": "bun build --compile src/cli/tui.tsx --outfile dist/tui --external react-devtools-core && bun build --compile src/cli/headless.ts --outfile dist/agent"
   },
   "dependencies": {
     "ink": "^7.1.1",
-    "react": "^19.2.0"
+    "react": "^19.2.0",
+    "react-reconciler": "^0.33.0"
   },
   "devDependencies": {
     "@types/bun": "^1.4.2",

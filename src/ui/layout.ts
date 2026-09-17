@@ -57,6 +57,7 @@ export type Span = {
   readonly bg?: string;
   readonly dim?: boolean;
   readonly bold?: boolean;
+  readonly italic?: boolean;
 };
 
 export type Line = {
