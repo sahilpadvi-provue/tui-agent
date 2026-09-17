@@ -65,6 +65,12 @@ A terminal has one typeface, so hierarchy is colour, dim and bold — nothing el
 
 **A placeholder must not look like text you typed.** It renders in an explicit grey rather than `dim`, because dim white stays close to white on many themes — that exact bug shipped once.
 
+## The keyboard is never taken away
+
+A turn can run for minutes. Blocking input for that long means the next instruction has to be held in the user's head until the agent finishes, so the composer stays editable throughout: Enter queues while a turn is running, queued lines show under the working indicator, and the queue flushes when the runtime goes idle.
+
+This is why the working indicator is its own row rather than text inside the composer — the composer is needed for its actual job the whole time. `scripts/queue-check.tsx` drives real keystrokes through a busy app and is the guard.
+
 ## Rendering discipline
 
 - Bound every output. Tool output is capped in the view model, not just at the tool.

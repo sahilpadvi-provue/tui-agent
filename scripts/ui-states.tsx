@@ -57,6 +57,14 @@ await frame("awaiting approval", true, (e) => {
       blastRadius: { writes: ["/Users/sahilpadvi/Desktop/TUI"], network: true, command: "rm -r dist && npm run build" } });
 });
 
+await frame("working, with the composer still live", true, (e) => {
+  e({ type: "message.started", id: "u", role: "user" });
+  e({ type: "message.completed", id: "u", text: "fix the failing test" });
+  e({ type: "tool.started", callId: "c", name: "shell" });
+  e({ type: "tool.ended", callId: "c", args: { command: "npm test" } });
+  e({ type: "command.output", callId: "c", stream: "stdout", chunk: "running 3 suites\n" });
+});
+
 await frame("failure", false, (e) => {
   e({ type: "message.started", id: "u", role: "user" });
   e({ type: "message.completed", id: "u", text: "fix the import" });

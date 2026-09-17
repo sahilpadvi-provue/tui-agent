@@ -46,12 +46,23 @@ export function App({
   const [input, setInput] = useState("");
   const [confirmQuit, setConfirmQuit] = useState(false);
   const [elapsed, setElapsed] = useState(0);
+  const [queued, setQueued] = useState<string[]>([]);
   const startedAt = useRef<number | null>(null);
+  const wasBusy = useRef(false);
   const { stdout } = useStdout();
   const { exit } = useApp();
 
   // The only connection to the runtime: a subscription. No calls in, ever.
   useEffect(() => bus.on((e) => dispatch(e)), [bus]);
+
+  useEffect(() => {
+    if (wasBusy.current && !busy && queued.length > 0) {
+      const [next, ...rest] = queued;
+      setQueued(rest);
+      onSubmit(next!);
+    }
+    wasBusy.current = busy;
+  }, [busy, queued, onSubmit]);
 
   // A local model can think for minutes. Without a clock the screen is
   // indistinguishable from a hang, and the first instinct is to kill it.
@@ -99,13 +110,16 @@ export function App({
     }
 
     setConfirmQuit(false);
-    if (busy) return;
 
     if (key.return) {
       const text = input.trim();
       if (!text) return;
       setInput("");
-      onSubmit(text);
+      // A turn can run for minutes. Taking the keyboard away for that long
+      // means the next instruction has to be held in the user's head until
+      // the agent is finished, so it is queued instead.
+      if (busy) setQueued((q) => [...q, text]);
+      else onSubmit(text);
       return;
     }
     if (key.backspace || key.delete) return setInput((s) => s.slice(0, -1));
@@ -139,6 +153,21 @@ export function App({
           <Row key={`live-${i}`} line={l} />
         ))}
 
+        {busy && !state.pending && (
+          <Stack direction="row" padX={GUTTER}>
+            <Label color="cyan">{"\u00b7 "}</Label>
+            <Label bold>working</Label>
+            <Label dim>{`  ${formatElapsed(elapsed)} \u00b7 esc to interrupt`}</Label>
+          </Stack>
+        )}
+
+        {queued.map((q, i) => (
+          <Stack key={i} direction="row" padX={GUTTER}>
+            <Label dim>{"\u21b3 queued  "}</Label>
+            <Label dim>{clip(q, term - GUTTER - 12)}</Label>
+          </Stack>
+        ))}
+
         {state.pending ? (
           <Stack direction="column" padX={GUTTER} border borderSides="y" borderColor="yellow">
             <Label bold color="yellow">{`approve ${state.pending.tool}`}</Label>
@@ -153,16 +182,14 @@ export function App({
             padX={GUTTER}
             border
             borderSides="y"
-            borderDim={!confirmQuit && !busy}
-            borderColor={confirmQuit ? "yellow" : busy ? "gray" : undefined}
+            borderDim={!confirmQuit}
+            borderColor={confirmQuit ? "yellow" : undefined}
           >
-            <Label color={confirmQuit ? "yellow" : busy ? "gray" : "cyan"}>
-              {confirmQuit ? "! " : busy ? "\u00b7 " : "\u203a "}
+            <Label color={confirmQuit ? "yellow" : "cyan"}>
+              {confirmQuit ? "! " : "\u203a "}
             </Label>
             {confirmQuit ? (
               <Label color="yellow">ctrl-c again to exit, any key to stay</Label>
-            ) : busy ? (
-              <Label dim>{`working ${formatElapsed(elapsed)} \u00b7 esc to interrupt`}</Label>
             ) : (
               <Label>
                 {input}
@@ -171,7 +198,9 @@ export function App({
                     it. An explicit grey reads as absent in a way SGR dim does
                     not -- dim white is still close to white on many themes. */}
                 {input === "" && (
-                  <Label color="gray">{" describe a change, or ask about the code"}</Label>
+                  <Label color="gray">
+                    {busy ? " type to queue the next instruction" : " describe a change, or ask about the code"}
+                  </Label>
                 )}
               </Label>
             )}

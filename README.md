@@ -84,6 +84,7 @@ that one file.
 | Render cost on a long transcript | `bun run scripts/bench.tsx` | passing |
 | Ctrl-C quits when idle | `bun run scripts/quit-check.tsx` | passing |
 | UI changes nothing the runtime records | `bun run scripts/log-equivalence.tsx` | passing |
+| Typing stays live during a turn | `bun run scripts/queue-check.tsx` | passing |
 | Sandbox blocks writes and egress | `bun run scripts/sandbox-check.ts` | passing |
 | Checkpoint restores a damaged file | `bun run scripts/checkpoint-check.ts` | passing |
 
