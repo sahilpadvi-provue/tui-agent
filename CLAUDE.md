@@ -18,12 +18,25 @@ These five are not style preferences. Breaking one costs a rewrite later.
 4. **The executor interface stays async and stream-shaped**, even where local execution does not need it. The container backend (phase 2) speaks HTTP; a synchronous signature here would force every caller to change.
 5. **No wire protocol until a second client exists.** No JSON-RPC, no WebSocket, no published schema, no version negotiation. The in-process bus preserves the option without paying for it.
 
+## Stop and find out
+
+Guessing is the expensive failure here, because a wrong guess looks like a model that cannot follow instructions.
+
+- About to write "usually", "probably" or "should work" about anything outside this repo. Hard stop.
+- Ollama's `/api/chat`: stream framing, `thinking`, `num_ctx`, tool-call encoding. Under-documented and it moves between releases. `src/model/ollama.ts` records what we learned; read it before contradicting it.
+- A Bun or Ink 7 behaviour. Ink's API changed materially in 7.x and most advice online predates it — `src/ui/README.md` lists what we verified against the installed package.
+- A first attempt failed and you do not understand why. Do not iterate on a guess.
+- A contract expensive to reverse: the event vocabulary, the log format, the executor interface, a tool's name or schema.
+
+**Agent defects wear the model's clothes.** A tool quietly returning the wrong thing reads as a model that cannot follow instructions, and the tempting fix is a sentence of prompt. Prove which before changing either — the `replace_lines` work started as "the model is bad at editing" and ended as a tool design problem.
+
 ## How to work
 
 - State assumptions before coding. If two readings produce materially different work, ask. Otherwise decide, say what you assumed, and proceed.
 - Minimum code that solves the ask. No speculative abstractions, options, or handling for impossible cases.
 - Touch only what the request needs. No drive-by reformatting or refactoring adjacent code.
 - Match surrounding style even if you would do it differently.
+- An abstraction, option, wrapper or flag needs two concrete present-day uses. One use is a function, not a pattern.
 - Reproduce a bug before fixing it. Measure before optimizing — the render benchmark exists for this.
 - Verify with what the repo has: `bun x tsc --noEmit`, the relevant gate script, and a real run against a demo repo. Claims about the agent's behavior need a session log, not a description.
 
@@ -50,6 +63,8 @@ Most diffs add zero comments. Do not comment code you did not otherwise change.
 - Private class members use `#name`, not `private` where the field is genuinely internal.
 - Event types are discriminated on `type`; add to the union in `src/core/events.ts` rather than widening a payload.
 - Adding an event: extend the union, then the reducer in `src/ui/model.ts`. Changing an event's *identity* (splitting one into three) breaks every recorded log — do not, without a log version bump.
+- Every tool schema carries `additionalProperties: false` — a hint to the model, not enforcement. Each tool's `validate` is what actually guards the input, and its error text is written for the model to act on: say what to do next, not just what was wrong.
+- **Logs on disk are a format.** Changing the shape of `AgentEvent` or `SessionMeta` means bumping `PROTOCOL_VERSION` and handling the old shape on read.
 
 ## Working on the agent loop
 
@@ -65,6 +80,16 @@ Most diffs add zero comments. Do not comment code you did not otherwise change.
 - **Reads are enforced before edits.** Editing an unread file fails — models invent the text they claim to be replacing.
 
 Keep both guardrails for any model. If you add an edit primitive, it must not assume perfect transcription.
+
+## Evals
+
+`evals/run.ts` drives the loop against a copy of a fixture's repo with approvals auto-allowed — the approval path is covered by the gate scripts, not by evals.
+
+- **A verifier probes behaviour and never matches on source text.** More than one fix is usually correct, and a verifier that greps for an expected line fails the ones it did not imagine.
+- **A verifier also checks the agent did not weaken the suite it was asked to satisfy** — deleting the failing assertion is not a fix.
+- Where possible, probe an input the fixture's own tests do not cover. That is what separates a real implementation from one fitted to the visible cases.
+- A `trap` fixture targets one failure mode we have actually seen. Add one when a real failure is diagnosed, so the regression announces itself.
+- **One run of a small model proves nothing.** Use `--repeats` and read the pass rate.
 
 ## Security
 
@@ -87,7 +112,13 @@ bun x tsc --noEmit                           # run on every change
 
 Flags: `--no-sandbox` disables OS containment, `CONTEXT_WINDOW=3000` forces early compaction, `MODEL=<name>` picks the Ollama model.
 
-Ollama must be running (`ollama serve`) with the model pulled.
+Ollama must be running (`ollama serve`) with the model pulled. Only one model fits in memory at a time; never run two.
+
+```bash
+bun run evals                                # every fixture
+bun run evals --fast                         # the fast subset, while iterating
+bun run evals --only ambiguous-edit --repeats 5
+```
 
 ## Gate scripts
 
@@ -114,5 +145,6 @@ Commits are authored as the user. Leave edits in the working tree; ask before `g
 2. Comment pass: remove any comment that says what instead of why.
 3. `bun x tsc --noEmit`.
 4. Run the gate script covering the area you touched.
-5. For agent-behavior claims: a real run, and the session log to back it up.
-6. Report what changed, and which gate you ran.
+5. **Prove it.** For anything touching the loop, the CLI or a tool, run it — `bun run agent --yes "<task>"` **in a scratch directory, never in this repo**: the workspace is `process.cwd()` and the agent writes to it. `bun run evals --fast` is the broader check.
+6. For agent-behaviour claims: a real run, and the session log to back it up. "Should work" is not verification.
+7. Report what changed, and which gate or eval you ran.

@@ -70,11 +70,19 @@ export class PermissionPolicy {
   }
 }
 
-/** Human-readable one-liner shown before the prompt. */
-export function describeRadius(r: BlastRadius): string {
-  const parts: string[] = [];
-  if (r.command) parts.push(`runs: ${r.command}`);
-  if (r.writes.length) parts.push(`may write: ${r.writes.join(", ")}`);
-  if (r.network) parts.push("network: yes");
-  return parts.join("  |  ") || "no side effects";
+/**
+ * What the action will touch, one fact per line.
+ *
+ * Joined into a single string these wrap mid-separator and stop being
+ * scannable at exactly the moment the reader is deciding whether to allow
+ * something destructive.
+ */
+export function radiusLines(r: BlastRadius): string[] {
+  const out: string[] = [];
+  if (r.command) out.push(r.command);
+  const effects: string[] = [];
+  if (r.writes.length) effects.push(`writes ${r.writes.join(", ")}`);
+  if (r.network) effects.push("network");
+  if (effects.length) out.push(effects.join("  \u00b7  "));
+  return out.length ? out : ["no side effects"];
 }

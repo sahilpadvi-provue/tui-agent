@@ -13,7 +13,7 @@ import { AgentLoop } from "../core/loop.ts";
 import { LocalExecutor } from "../exec/local.ts";
 import { ToolRegistry } from "../tools/registry.ts";
 import { builtinTools } from "../tools/builtin.ts";
-import { PermissionPolicy, describeRadius } from "../permissions/policy.ts";
+import { PermissionPolicy, radiusLines } from "../permissions/policy.ts";
 import { OllamaClient } from "../model/ollama.ts";
 import { SYSTEM_PROMPT } from "../core/prompt.ts";
 import { resume } from "../core/session.ts";
@@ -90,7 +90,7 @@ bus.on((e) => {
       process.stdout.write(`\x1b[2m${e.chunk}\x1b[0m`);
       break;
     case "permission.requested":
-      console.log(`\x1b[33m[approve] ${e.tool}: ${describeRadius(e.blastRadius)}\x1b[0m`);
+      console.log(`\x1b[33m[approve] ${e.tool}  ${radiusLines(e.blastRadius).join("  \u00b7  ")}\x1b[0m`);
       break;
     case "error":
       console.error(`\x1b[31m[error] ${e.message}\x1b[0m`);

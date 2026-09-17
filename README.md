@@ -71,6 +71,7 @@ that one file.
 | Agent completes a task with no UI | `bun run agent "..." --yes` | passing |
 | Workspace boundary holds | `bun run scripts/boundary.ts` | passing |
 | Render cost on a long transcript | `bun run scripts/bench.tsx` | passing |
+| Ctrl-C quits when idle | `bun run scripts/quit-check.tsx` | passing |
 | Sandbox blocks writes and egress | `bun run scripts/sandbox-check.ts` | passing |
 | Checkpoint restores a damaged file | `bun run scripts/checkpoint-check.ts` | passing |
 

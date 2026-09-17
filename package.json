@@ -8,7 +8,8 @@
     "replay": "bun run scripts/replay.ts",
     "typecheck": "tsc --noEmit",
     "tui": "bun run src/cli/tui.tsx",
-    "sessions": "bun run src/cli/sessions.ts"
+    "sessions": "bun run src/cli/sessions.ts",
+    "evals": "bun run evals/run.ts"
   },
   "dependencies": {
     "ink": "^7.1.1",
