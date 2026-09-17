@@ -50,7 +50,7 @@ async function drive(keys: string[], width = 100) {
   await app.waitUntilExit();
   const frames = out.split("\x1b[?2026h");
   const frame = (frames[frames.length - 1] ?? "").replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "");
-  return { sent, ran, frame };
+  return { sent, ran, frame, raw: out };
 }
 
 /** What the composer held, read back through the one path that reveals it. */
@@ -123,6 +123,60 @@ const panel = await drive(["?"]);
 check("? on an empty prompt lists the bindings", panel.frame.includes("any key to dismiss"));
 check("the next key dismisses it", !(await drive(["?", "x"])).frame.includes("any key to dismiss"));
 check("? after some text is just a character", await typed(["why", "?"]) === "why?");
+
+// ---------------------------------------------------------------------------
+// Paste
+//
+// A terminal in raw mode sends CR for a pasted line break -- the same byte as
+// Enter. Bracketed paste is the only thing that tells them apart, and the case
+// that exposes its absence is a read boundary landing exactly on a break.
+// ---------------------------------------------------------------------------
+
+const CODE = "function add(a, b) {\r  return a + b;\r}";
+const PASTE = (text: string) => `\x1b[200~${text}\x1b[201~`;
+
+// Without this the terminal never brackets a paste, every pasted line break
+// is the same byte as Enter, and the rest of these checks are only testing
+// that the parser understands markers nothing is asking it to send.
+check("the terminal is put into bracketed paste mode",
+  (await drive([])).raw.includes("\x1b[?2004h"));
+
+const oneChunk = await drive([PASTE(CODE), ENTER]);
+check("a pasted block arrives as one message", oneChunk.sent.length === 1, JSON.stringify(oneChunk.sent));
+check("its line breaks survive as newlines",
+  oneChunk.sent[0] === "function add(a, b) {\n  return a + b;\n}", JSON.stringify(oneChunk.sent[0]));
+
+// The regression: delivered as separate writes, one of which is a lone CR.
+const split = await drive(["\x1b[200~function add(a, b) {", "\r", "  return a + b;", "\r", "}\x1b[201~", ENTER]);
+check("a paste split across reads does not submit itself", split.sent.length === 1, JSON.stringify(split.sent));
+check("and loses nothing",
+  split.sent[0] === "function add(a, b) {\n  return a + b;\n}", JSON.stringify(split.sent[0]));
+
+const around = await drive([PASTE("one\rtwo"), " what is wrong?", ENTER]);
+check("you can type next to a paste", around.sent[0] === "one\ntwo what is wrong?", JSON.stringify(around.sent[0]));
+
+const before = await drive(["look: ", PASTE("one\rtwo"), ENTER]);
+check("and before it", before.sent[0] === "look: one\ntwo", JSON.stringify(before.sent[0]));
+
+check("a pasted line break is never a submit on its own",
+  (await drive([PASTE("only one line")])).sent.length === 0);
+
+// A big paste must not grow the region that is redrawn on every keystroke.
+const big = Array.from({ length: 60 }, (_, i) => `line ${i}`).join("\r");
+const folded = await drive([PASTE(big)]);
+check("a long paste folds instead of filling the screen", folded.frame.includes("58 more lines"),
+  folded.frame.split("\n").filter((l) => l.startsWith("  ")).length + " rows");
+check("its first and last lines stay visible",
+  folded.frame.includes("line 0") && folded.frame.includes("line 59"));
+check("and all of it is still submitted",
+  (await drive([PASTE(big), ENTER])).sent[0]?.split("\n").length === 60);
+
+check("editing keeps working inside a folded paste",
+  (await drive([PASTE(big), CTRL("w"), "X", ENTER])).sent[0]?.endsWith("line X") === true,
+  JSON.stringify((await drive([PASTE(big), CTRL("w"), "X", ENTER])).sent[0]?.slice(-20)));
+
+const short = await drive([PASTE("a\rb")]);
+check("a short paste is not folded", !short.frame.includes("more line"));
 
 console.log(failures === 0 ? "\nall key bindings behave" : `\n${failures} failed`);
 process.exit(failures === 0 ? 0 : 1);

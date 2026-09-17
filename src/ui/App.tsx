@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { Stack, Label, Settled, useKeys, useStdout, useApp, type Color } from "./primitives.tsx";
+import { Stack, Label, Settled, useKeys, usePaste, useStdout, useApp, type Color } from "./primitives.tsx";
 import { reduce, initialState, cleared, type ViewItem } from "./model.ts";
 import { Markdown } from "./markdown.tsx";
 import { bannerLines } from "./banner.ts";
@@ -9,7 +9,7 @@ import {
   summariseCall, verbFor, wrap,
   type Line as L,
 } from "./layout.ts";
-import { wordLeft, wordRight } from "./editor.ts";
+import { composerRows, normalizeNewlines, wordLeft, wordRight } from "./editor.ts";
 import { SHORTCUTS } from "./shortcuts.ts";
 import { radiusLines } from "../permissions/policy.ts";
 import { COMMANDS, isCommand } from "../commands/registry.ts";
@@ -150,6 +150,22 @@ export function App({
     setDraft("");
   };
 
+  /** Typed and pasted text take the same path in, so both are normalized. */
+  const insert = (text: string) => {
+    const clean = normalizeNewlines(text);
+    setSelected(0);
+    setDismissed(false);
+    put(input.slice(0, cursor) + clean + input.slice(cursor), cursor + clean.length);
+  };
+
+  // Paste is its own channel, so a pasted line break can never be read as a
+  // pressed Enter. It stays editable text rather than becoming an attachment:
+  // the point of pasting a stack trace is to type a question next to it.
+  usePaste((text) => {
+    if (state.pending || helping) return;
+    insert(text);
+  });
+
   useKeys((char, key) => {
     if (state.pending) {
       if (char === "y") onPermission({ kind: "allow", scope: "once" });
@@ -274,11 +290,9 @@ export function App({
       setHelping(true);
       return;
     }
-    if (char && !key.ctrl && !key.meta) {
-      setSelected(0);
-      setDismissed(false);
-      put(input.slice(0, cursor) + char + input.slice(cursor), cursor + char.length);
-    }
+    // A terminal that ignores the bracketed-paste request still delivers a
+    // paste here, in chunks, so this path normalizes too.
+    if (char && !key.ctrl && !key.meta) insert(char);
   });
 
   const term = stdout?.columns ?? 80;
@@ -410,26 +424,42 @@ export function App({
             {confirmQuit ? (
               <Label color="yellow">ctrl-c again to exit, any key to stay</Label>
             ) : (
-              <Label>
-                {input.slice(0, cursor)}
-                {/* At the end of the line the cursor is a bar, as it has
-                    always been. Inside the line it has to be a block: a bar
-                    between two characters reads as one of them. */}
-                {cursor < input.length ? (
-                  <Label bg={CURSOR} color="black">{input[cursor]}</Label>
-                ) : (
-                  <Label>{"\u258f"}</Label>
+              <Stack direction="column" grow={1}>
+                {composerRows(input, cursor, COMPOSER_ROWS).map((row, i) =>
+                  row.kind === "hidden" ? (
+                    <Label key={`fold-${i}`} dim>{`\u2026 ${row.count} more line${row.count === 1 ? "" : "s"}`}</Label>
+                  ) : (
+                    <Label key={`row-${i}`}>
+                      {row.cursor === undefined ? (
+                        row.text
+                      ) : (
+                        <Label>
+                          {row.text.slice(0, row.cursor)}
+                          {/* At the end of the line the cursor is a bar, as
+                              it has always been. Inside the line it has to be
+                              a block: a bar between two characters reads as
+                              one of them. */}
+                          {row.cursor < row.text.length ? (
+                            <Label bg={CURSOR} color="black">{row.text[row.cursor]}</Label>
+                          ) : (
+                            <Label>{"\u258f"}</Label>
+                          )}
+                          {row.text.slice(row.cursor + 1)}
+                        </Label>
+                      )}
+                      {/* The hint is not text you typed, so it must not look
+                          like it. An explicit grey reads as absent in a way
+                          SGR dim does not -- dim white is still close to
+                          white on many themes. */}
+                      {input === "" && (
+                        <Label color="gray">
+                          {busy ? " type to queue the next instruction" : " describe a change, or ask about the code"}
+                        </Label>
+                      )}
+                    </Label>
+                  ),
                 )}
-                {input.slice(cursor + 1)}
-                {/* The hint is not text you typed, so it must not look like
-                    it. An explicit grey reads as absent in a way SGR dim does
-                    not -- dim white is still close to white on many themes. */}
-                {input === "" && (
-                  <Label color="gray">
-                    {busy ? " type to queue the next instruction" : " describe a change, or ask about the code"}
-                  </Label>
-                )}
-              </Label>
+              </Stack>
             )}
           </Stack>
         )}
@@ -506,6 +536,9 @@ const NAME_COLUMN = 22;
 
 /** Width of the key column in the shortcut list. */
 const KEY_COLUMN = 18;
+
+/** Prompt rows shown before the middle of a paste is folded away. */
+const COMPOSER_ROWS = 4;
 
 /** The live frame is redrawn on every keystroke, so the list is capped. */
 const PALETTE_ROWS = 8;

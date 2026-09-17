@@ -12,6 +12,7 @@ import {
   Text as InkText,
   Static as InkStatic,
   useInput as inkUseInput,
+  usePaste as inkUsePaste,
   useApp as inkUseApp,
   useStdout as inkUseStdout,
   useBoxMetrics as inkUseBoxMetrics,
@@ -111,6 +112,15 @@ export function Settled<T>({
 }
 
 export const useKeys = inkUseInput;
+/**
+ * Pasted text, on its own channel.
+ *
+ * Mounting this is what turns on the terminal's bracketed paste mode, which
+ * is the only thing that tells a pasted line break apart from a pressed
+ * Enter. Without it the two are the same byte and a paste can submit itself
+ * halfway through -- see `scripts/keys-check.tsx`.
+ */
+export const usePaste = inkUsePaste;
 export const useApp = inkUseApp;
 export const useStdout = inkUseStdout;
 export const useMetrics = inkUseBoxMetrics;

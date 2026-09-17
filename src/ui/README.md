@@ -94,6 +94,12 @@ The prompt carries a cursor index, not just a string. Everything else follows fr
 
 **`?` on an empty prompt lists the bindings**, and any key dismisses it. On a prompt with text in it, `?` is a question mark. Discoverability is the whole reason the bindings exist — one a user cannot find is one they do not have.
 
+**Paste has its own channel, and that is not cosmetic.** A terminal in raw mode sends CR for a pasted line break — the same byte as Enter. Ink's parser refuses to split a multi-character chunk on CR, which hides the problem most of the time, but when a read boundary lands exactly on a line break the next chunk is a lone CR and the paste submits itself halfway through: measured, a three-line paste delivered as five writes fired `onSubmit` twice and lost the third line. Mounting `usePaste` puts the terminal into bracketed paste mode (`\x1b[?2004h`), which brackets the payload so it can never be read as a keypress. The gate asserts the escape sequence is actually written — injecting the markers by hand passes on a build that never asks for them.
+
+**Pasted text is normalized to `\n` on the way in**, on both the paste channel and the typed one, because a terminal that ignores the bracketed-paste request still delivers a paste through `useInput` in chunks. Unnormalized, a pasted function renders as one run-on line and reaches the model full of `\r`.
+
+**A long paste folds in the middle.** `composerRows` keeps the first line, the line the cursor is on, and the last, and collapses the rest to a count — so sixty pasted lines are three rows, not sixty, in a region that is redrawn on every keystroke. Keeping the cursor's line is what lets every movement binding keep working inside a fold. `input` still holds the whole paste; the fold is display only.
+
 **There is no `ctrl-l`.** Clearing the screen would destroy the settled transcript permanently: it lives in the terminal's real scrollback, and `Static` will not reprint it. `/clear` starts a fresh conversation, which is the thing people actually want.
 
 `scripts/keys-check.tsx` is the guard, and it probes every binding by the text that comes out of the composer rather than by finding the cursor in the frame — a cursor read off the rendered row passes on a build that draws it in the right place and edits in the wrong one.
