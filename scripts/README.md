@@ -10,6 +10,10 @@ Gate scripts. Each one is a claim about the system that can fail loudly.
 | `checkpoint-check.ts` | A checkpoint restores damage without touching the user's git state |
 | `bench.tsx` | Render cost stays flat on a long transcript under streaming |
 | `ui-smoke.tsx` | The UI renders a frame, including the permission prompt |
+| `cancel-check.ts` | Esc kills the whole process tree and keeps what was already printed |
+| `resume-check.ts` | A resumed session carries its history, continues its sequence, and refuses the wrong tree |
+| `log-equivalence.tsx` | Mounting the UI changes nothing the runtime records |
+| `queue-check.tsx` | Typing is never blocked; Enter queues and the queue flushes on idle |
 | `frame-dump.tsx` | Not a gate — prints the rendered frame line by line, for layout work |
 
 ## Rules

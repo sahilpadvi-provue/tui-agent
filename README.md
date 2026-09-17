@@ -85,6 +85,8 @@ that one file.
 | Ctrl-C quits when idle | `bun run scripts/quit-check.tsx` | passing |
 | UI changes nothing the runtime records | `bun run scripts/log-equivalence.tsx` | passing |
 | Typing stays live during a turn | `bun run scripts/queue-check.tsx` | passing |
+| Esc kills the process tree, keeps partial output | `bun run scripts/cancel-check.ts` | passing |
+| A session survives the process that made it | `bun run scripts/resume-check.ts` | passing |
 | Sandbox blocks writes and egress | `bun run scripts/sandbox-check.ts` | passing |
 | Checkpoint restores a damaged file | `bun run scripts/checkpoint-check.ts` | passing |
 
