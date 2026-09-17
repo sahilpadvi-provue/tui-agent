@@ -256,37 +256,49 @@ export function App({
         ))}
 
         {/*
-          These are banded rather than bordered. A border draws a rule the full
-          width of the terminal, and any line in the live frame that reaches
-          that width leaks a row every time the window narrows -- Ink erases by
-          logical line count while the terminal re-wraps to physical rows. A
-          background that stops at the end of the text reads as the same field
-          and costs nothing. See scripts/reflow-check.tsx.
+          Marked with a bar at the left rather than a band or a border.
+          A border rules the full width of the terminal and a band pads to it;
+          any line in the live frame that reaches that width leaks a row every
+          time the window narrows, because Ink erases by logical line count
+          while the terminal re-wraps to physical rows. A band that stops after
+          the text avoids that but reads as a highlight someone left behind,
+          and it does not match the full-width bands in the transcript, which
+          are settled and safe. A bar is one column, so it is honest at any
+          width. See scripts/reflow-check.tsx.
         */}
         {state.pending ? (
           <Stack direction="column" padX={GUTTER}>
-            <Label bg={BAND} bold color="yellow">{` \u25b8 approve ${state.pending.tool} `}</Label>
+            <Label>
+              <Label color="yellow">{"\u2590 "}</Label>
+              <Label bold color="yellow">{`approve ${state.pending.tool}`}</Label>
+            </Label>
             {radiusLines(state.pending.radius).map((l, i) => (
-              <Label key={i} bg={BAND} dim>{` ${clip(l, term - 8)} `}</Label>
+              <Label key={i}>
+                <Label color="yellow">{"\u2590 "}</Label>
+                <Label dim>{clip(l, term - 8)}</Label>
+              </Label>
             ))}
-            <Label bg={BAND} dim>{" [y] once    [a] session    [n] deny "}</Label>
+            <Label>
+              <Label color="yellow">{"\u2590 "}</Label>
+              <Label dim>{"[y] once    [a] session    [n] deny"}</Label>
+            </Label>
           </Stack>
         ) : (
           <Stack direction="row" padX={GUTTER}>
-            <Label bg={BAND} color={confirmQuit ? "yellow" : "cyan"}>
-              {confirmQuit ? " ! " : " \u203a "}
+            <Label bold color={confirmQuit ? "yellow" : "cyan"}>
+              {confirmQuit ? "\u2590 ! " : "\u2590 \u203a "}
             </Label>
             {confirmQuit ? (
-              <Label bg={BAND} color="yellow">{"ctrl-c again to exit, any key to stay "}</Label>
+              <Label color="yellow">{"ctrl-c again to exit, any key to stay"}</Label>
             ) : (
-              <Label bg={BAND}>
+              <Label>
                 {input}
-                <Label bg={BAND}>{"\u258f"}</Label>
+                <Label>{"\u258f"}</Label>
                 {/* The hint is not text you typed, so it must not look like
                     it. An explicit grey reads as absent in a way SGR dim does
                     not -- dim white is still close to white on many themes. */}
                 {input.startsWith("/") && (
-                  <Label bg={BAND} dim>
+                  <Label dim>
                     {"   " + COMMANDS.map((c) => c.name)
                       .filter((n) => n.startsWith(input.slice(1).split(" ")[0] ?? ""))
                       .slice(0, 6)
@@ -295,8 +307,8 @@ export function App({
                   </Label>
                 )}
                 {input === "" && (
-                  <Label bg={BAND} color="gray">
-                    {busy ? " type to queue the next instruction " : " describe a change, or ask about the code "}
+                  <Label color="gray">
+                    {busy ? " type to queue the next instruction" : " describe a change, or ask about the code"}
                   </Label>
                 )}
               </Label>
