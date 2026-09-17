@@ -9,6 +9,8 @@ import {
   summariseCall, verbFor, wrap,
   type Line as L,
 } from "./layout.ts";
+import { wordLeft, wordRight } from "./editor.ts";
+import { SHORTCUTS } from "./shortcuts.ts";
 import { radiusLines } from "../permissions/policy.ts";
 import { COMMANDS, isCommand } from "../commands/registry.ts";
 import type { EventBus } from "../core/bus.ts";
@@ -52,6 +54,13 @@ export function App({
   const [elapsed, setElapsed] = useState(0);
   const [queued, setQueued] = useState<string[]>([]);
   const [phase, setPhase] = useState(0);
+  const [selected, setSelected] = useState(0);
+  const [cursor, setCursor] = useState(0);
+  const [sent, setSent] = useState<string[]>([]);
+  const [recalling, setRecalling] = useState<number | null>(null);
+  const [draft, setDraft] = useState("");
+  const [dismissed, setDismissed] = useState(false);
+  const [helping, setHelping] = useState(false);
   const startedAt = useRef<number | null>(null);
   const wasBusy = useRef(false);
   const { stdout } = useStdout();
@@ -102,11 +111,56 @@ export function App({
     return () => clearInterval(id);
   }, [busy]);
 
+  /** Every write to the prompt goes through here, so the cursor cannot drift. */
+  const put = (text: string, at = text.length) => {
+    setInput(text);
+    setCursor(Math.max(0, Math.min(text.length, at)));
+  };
+
+  /**
+   * Browsing history keeps the half-written line.
+   *
+   * Losing a draft to a stray arrow is the failure that makes people stop
+   * trusting the up arrow, so the draft is put back on the way out the bottom.
+   */
+  const recall = (step: -1 | 1) => {
+    if (sent.length === 0) return;
+    if (recalling === null) {
+      if (step === 1) return;
+      setDraft(input);
+      setRecalling(sent.length - 1);
+      put(sent[sent.length - 1]!);
+      return;
+    }
+    const next = recalling + step;
+    if (next < 0) return;
+    if (next >= sent.length) {
+      setRecalling(null);
+      put(draft);
+      return;
+    }
+    setRecalling(next);
+    put(sent[next]!);
+  };
+
+  /** Submitting is the only thing that adds to history, and never twice over. */
+  const remember = (text: string) => {
+    setSent((h) => (h.at(-1) === text ? h : [...h, text]));
+    setRecalling(null);
+    setDraft("");
+  };
+
   useKeys((char, key) => {
     if (state.pending) {
       if (char === "y") onPermission({ kind: "allow", scope: "once" });
       else if (char === "a") onPermission({ kind: "allow", scope: "session" });
       else if (char === "n" || key.escape) onPermission({ kind: "deny", reason: "declined" });
+      return;
+    }
+    // The list is a reference, not a mode: whatever is pressed next closes it,
+    // so nobody has to learn how to get out.
+    if (helping) {
+      setHelping(false);
       return;
     }
     // Ctrl-C interrupts the turn while one is running, and quits when idle --
@@ -128,16 +182,71 @@ export function App({
     }
     if (key.escape) {
       if (busy) onCancel();
+      else if (paletteOpen) setDismissed(true);
       else setConfirmQuit(false);
       return;
     }
 
     setConfirmQuit(false);
 
+    // Arrows belong to the list while it is open, and to history otherwise.
+    if (paletteOpen) {
+      if (key.upArrow) return setSelected((n) => Math.max(0, n - 1));
+      if (key.downArrow) return setSelected((n) => Math.min(paletteCount - 1, n + 1));
+      if (key.tab) {
+        const pick = paletteAt(selected);
+        if (pick) put(`/${pick.name} `);
+        return;
+      }
+    } else {
+      if (key.upArrow) return recall(-1);
+      if (key.downArrow) return recall(1);
+    }
+    if (key.ctrl && char === "p") return recall(-1);
+    if (key.ctrl && char === "n") return recall(1);
+
+    // Movement. Alt and Ctrl are both accepted for the word jumps because
+    // which one a terminal sends with an arrow is a per-emulator setting.
+    if (key.leftArrow) return setCursor(key.meta || key.ctrl ? wordLeft(input, cursor) : Math.max(0, cursor - 1));
+    if (key.rightArrow) return setCursor(key.meta || key.ctrl ? wordRight(input, cursor) : Math.min(input.length, cursor + 1));
+    if (key.meta && char === "b") return setCursor(wordLeft(input, cursor));
+    if (key.meta && char === "f") return setCursor(wordRight(input, cursor));
+    if (key.home || (key.ctrl && char === "a")) return setCursor(0);
+    if (key.end || (key.ctrl && char === "e")) return setCursor(input.length);
+
+    // Deletion. Each one is a slice around the cursor, so none of them can
+    // move it anywhere the text does not go.
+    if ((key.ctrl && char === "w") || (key.backspace && key.meta)) {
+      const from = wordLeft(input, cursor);
+      return put(input.slice(0, from) + input.slice(cursor), from);
+    }
+    if (key.ctrl && char === "u") return put(input.slice(cursor), 0);
+    if (key.ctrl && char === "k") return put(input.slice(0, cursor), cursor);
+
     if (key.return) {
+      // Enter takes the highlighted command. One that needs an argument is
+      // completed rather than run, because running it would only produce its
+      // usage line.
+      if (paletteOpen) {
+        const pick = paletteAt(selected);
+        if (pick) {
+          const typedArgs = input.trim().slice(1).split(" ").slice(1).join(" ");
+          if (pick.takes && !typedArgs) {
+            put(`/${pick.name} `);
+            return;
+          }
+          const full = `/${pick.name}${typedArgs ? ` ${typedArgs}` : ""}`;
+          put("");
+          setSelected(0);
+          remember(full);
+          onCommand(full);
+          return;
+        }
+      }
       const text = input.trim();
       if (!text) return;
-      setInput("");
+      put("");
+      remember(text);
       // A turn can run for minutes. Taking the keyboard away for that long
       // means the next instruction has to be held in the user's head until
       // the agent is finished, so it is queued instead.
@@ -148,11 +257,38 @@ export function App({
       else onSubmit(text);
       return;
     }
-    if (key.backspace || key.delete) return setInput((s) => s.slice(0, -1));
-    if (char && !key.ctrl && !key.meta) setInput((s) => s + char);
+    if (key.backspace) {
+      if (cursor === 0) return;
+      setSelected(0);
+      setDismissed(false);
+      return put(input.slice(0, cursor - 1) + input.slice(cursor), cursor - 1);
+    }
+    if (key.delete) {
+      if (cursor >= input.length) return;
+      setSelected(0);
+      return put(input.slice(0, cursor) + input.slice(cursor + 1), cursor);
+    }
+    // A bare "?" is a question when there is a line to attach it to, and a
+    // request for the bindings when there is not.
+    if (char === "?" && input === "" && !key.ctrl && !key.meta) {
+      setHelping(true);
+      return;
+    }
+    if (char && !key.ctrl && !key.meta) {
+      setSelected(0);
+      setDismissed(false);
+      put(input.slice(0, cursor) + char + input.slice(cursor), cursor + char.length);
+    }
   });
 
   const term = stdout?.columns ?? 80;
+
+  const matchingCommands = input.startsWith("/")
+    ? COMMANDS.filter((c) => c.name.startsWith(input.slice(1).split(" ")[0] ?? ""))
+    : [];
+  const paletteOpen = matchingCommands.length > 0 && !dismissed;
+  const paletteCount = Math.min(matchingCommands.length, PALETTE_ROWS);
+  const paletteAt = (n: number) => matchingCommands[n];
 
   // An item is settled once nothing can change it again. Settled lines are
   // append-only for Static, which holds because a gap depends only on an item
@@ -217,11 +353,8 @@ export function App({
    * needs the hint. Capped, because this sits in the live frame and that is
    * redrawn whole on every keystroke.
    */
-  const matching = input.startsWith("/")
-    ? COMMANDS.filter((c) => c.name.startsWith(input.slice(1).split(" ")[0] ?? ""))
-    : [];
-  const palette = matching.slice(0, PALETTE_ROWS);
-  const moreCommands = matching.length - palette.length;
+  const palette = paletteOpen ? matchingCommands.slice(0, PALETTE_ROWS) : [];
+  const moreCommands = matchingCommands.length - palette.length;
 
   return (
     <>
@@ -278,8 +411,16 @@ export function App({
               <Label color="yellow">ctrl-c again to exit, any key to stay</Label>
             ) : (
               <Label>
-                {input}
-                <Label>{"\u258f"}</Label>
+                {input.slice(0, cursor)}
+                {/* At the end of the line the cursor is a bar, as it has
+                    always been. Inside the line it has to be a block: a bar
+                    between two characters reads as one of them. */}
+                {cursor < input.length ? (
+                  <Label bg={CURSOR} color="black">{input[cursor]}</Label>
+                ) : (
+                  <Label>{"\u258f"}</Label>
+                )}
+                {input.slice(cursor + 1)}
                 {/* The hint is not text you typed, so it must not look like
                     it. An explicit grey reads as absent in a way SGR dim does
                     not -- dim white is still close to white on many themes. */}
@@ -295,17 +436,43 @@ export function App({
 
         {palette.length > 0 && (
           <Stack direction="column" padX={GUTTER}>
-            {palette.map((c) => (
-              <Label key={c.name}>
-                <Label color="cyan">
-                  {`/${c.name}${c.takes ? ` ${c.takes}` : ""}`.padEnd(NAME_COLUMN)}
+            {palette.map((c, i) => {
+              const on = i === selected;
+              return (
+                <Label key={c.name}>
+                  <Label color={on ? "cyan" : undefined}>{on ? "\u203a " : "  "}</Label>
+                  <Label bg={on ? BAND : undefined} color="cyan" bold={on}>
+                    {`/${c.name}${c.takes ? ` ${c.takes}` : ""}`.padEnd(NAME_COLUMN)}
+                  </Label>
+                  <Label bg={on ? BAND : undefined} dim={!on}>
+                    {clip(c.summary, term - GUTTER - NAME_COLUMN - 4)}
+                  </Label>
                 </Label>
-                <Label dim>{clip(c.summary, term - GUTTER - NAME_COLUMN - 2)}</Label>
-              </Label>
-            ))}
+              );
+            })}
             {moreCommands > 0 && (
-              <Label dim>{`${" ".repeat(NAME_COLUMN)}\u2026 ${moreCommands} more`}</Label>
+              <Label dim>{`${" ".repeat(NAME_COLUMN + 2)}\u2026 ${moreCommands} more`}</Label>
             )}
+          </Stack>
+        )}
+
+        {helping && (
+          <Stack direction="column" padX={GUTTER}>
+            {SHORTCUTS.map((group) => (
+              <Stack key={group.title} direction="column">
+                <Label> </Label>
+                <Label color="cyan" bold>{group.title}</Label>
+                {group.items.map((it) => (
+                  <Label key={`${group.title}-${it.keys}`}>
+                    <Label color="yellow">{it.keys.padEnd(KEY_COLUMN)}</Label>
+                    <Label dim>{clip(it.does, term - GUTTER - KEY_COLUMN - 2)}</Label>
+                  </Label>
+                ))}
+              </Stack>
+            ))}
+            <Label> </Label>
+            <Label dim>{"any key to dismiss"}</Label>
+            <Label> </Label>
           </Stack>
         )}
 
@@ -331,8 +498,14 @@ export function App({
 /** One step off the terminal's own background: enough to read as a field. */
 const BAND = "#2a2a2a";
 
+/** Light enough to read as the terminal's own cursor rather than a highlight. */
+const CURSOR = "#c8c8c8";
+
 /** Width of the command column, so the descriptions line up. */
 const NAME_COLUMN = 22;
+
+/** Width of the key column in the shortcut list. */
+const KEY_COLUMN = 18;
 
 /** The live frame is redrawn on every keystroke, so the list is capped. */
 const PALETTE_ROWS = 8;

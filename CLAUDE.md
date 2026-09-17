@@ -131,6 +131,7 @@ bun run scripts/sandbox-check.ts                       # OS sandbox contains wri
 bun run scripts/checkpoint-check.ts                    # checkpoint restores, user git state untouched
 bun run scripts/bench.tsx                              # render cost on a long transcript
 bun run scripts/ui-smoke.tsx                           # UI renders a frame
+bun run scripts/keys-check.tsx                         # every key binding edits what it claims to
 ```
 
 ## Attribution

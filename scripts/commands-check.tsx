@@ -142,4 +142,63 @@ check("the list adds no full-width lines of its own", paletteRows.length > 0 && 
 const none = await afterTyping("hello");
 check("ordinary text shows no list", !none.includes("list these commands"));
 
+// ---------------------------------------------------------------------------
+// Moving through the list with the arrows, and what Enter does when it lands
+// on a command that needs an argument.
+// ---------------------------------------------------------------------------
+
+async function drive(keys: string[], width = 100) {
+  let out = "";
+  const invoked: string[] = [];
+  const so = Object.assign(new Writable({ write(c, _e, cb) { out += String(c); cb(); return true; } }),
+    { columns: width, rows: 30, isTTY: true });
+  const si = Object.assign(new PassThrough(), { isTTY: true, setRawMode() {}, ref() {}, unref() {} });
+  const b = new EventBus();
+  const a = render(
+    <App bus={b} cwd={ws} model="m" version="0" backend="b" sandbox="off" busy={false}
+         onSubmit={() => {}} onCommand={(c) => invoked.push(c)} onCancel={() => {}} onPermission={() => {}} />,
+    { stdout: so as any, stdin: si as any, patchConsole: false },
+  );
+  await new Promise((r) => setTimeout(r, 110));
+  for (const k of keys) { si.write(k); await new Promise((r) => setTimeout(r, 55)); }
+  await new Promise((r) => setTimeout(r, 130));
+  a.unmount();
+  await a.waitUntilExit();
+  const frames = out.split("\x1b[?2026h");
+  const last = (frames[frames.length - 1] ?? "").replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "");
+  const highlighted = last.split("\n").filter((l) => l.trim().startsWith("\u203a") && l.includes("/"));
+  const prompt = last.split("\n").find((l) => l.includes("\u203a ") && l.includes("\u258f")) ?? "";
+  return { invoked, highlighted: highlighted.map((l) => l.trim().slice(2).split(" ")[0]), prompt: prompt.trim() };
+}
+
+const DOWN = "\x1b[B";
+const UP = "\x1b[A";
+
+const opened = await drive(["/"]);
+check("the first command is highlighted on open", opened.highlighted.includes("/help"),
+  JSON.stringify(opened.highlighted));
+
+const moved = await drive(["/", DOWN, DOWN]);
+check("down moves the highlight", moved.highlighted.includes("/restore"), JSON.stringify(moved.highlighted));
+
+const back = await drive(["/", DOWN, DOWN, UP]);
+check("up moves it back", back.highlighted.includes("/context"), JSON.stringify(back.highlighted));
+
+const enterNoArgs = await drive(["/", DOWN, "\r"]);
+check("enter runs a command that needs nothing", enterNoArgs.invoked.join() === "/context",
+  JSON.stringify(enterNoArgs.invoked));
+
+const enterNeedsArgs = await drive(["/", "r", "\r"]);
+check("enter completes a command that needs an argument rather than running it",
+  enterNeedsArgs.invoked.length === 0 && enterNeedsArgs.prompt.includes("/restore"),
+  `${JSON.stringify(enterNeedsArgs.invoked)} ${JSON.stringify(enterNeedsArgs.prompt)}`);
+
+const withArgs = await drive(["/", "r", "\r", "4", ",", "5", "\r"]);
+check("then it runs with what was typed", withArgs.invoked.join() === "/restore 4,5",
+  JSON.stringify(withArgs.invoked));
+
+const tabbed = await drive(["/", "c", "\t"]);
+check("tab completes without running", tabbed.invoked.length === 0 && tabbed.prompt.includes("/context"),
+  JSON.stringify(tabbed.prompt));
+
 process.exit(failures ? 1 : 0);

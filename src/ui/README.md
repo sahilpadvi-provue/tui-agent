@@ -80,6 +80,24 @@ A turn can run for minutes. Blocking input for that long means the next instruct
 
 This is why the working indicator is its own row rather than text inside the composer — the composer is needed for its actual job the whole time. `scripts/queue-check.tsx` drives real keystrokes through a busy app and is the guard.
 
+## The composer is a line editor
+
+The prompt carries a cursor index, not just a string. Everything else follows from that: the arrows, the word jumps, `ctrl-a`/`ctrl-e`, and the three kills are all slices around one number, so none of them can put the cursor somewhere the text does not go. `editor.ts` holds the two word-boundary functions and nothing else; dispatch stays in `App.tsx`, because a key-to-closure table with one caller is indirection, not structure.
+
+**Words are whitespace-delimited**, the readline convention rather than the editor one. The composer holds prose and paths, and a punctuation-aware jump stops *inside* a path, which is never what was wanted.
+
+**The cursor is a bar at the end of the line and a block inside it.** A bar between two characters reads as one of them.
+
+**History keeps the draft.** Losing a half-written line to a stray up-arrow is what makes people stop trusting the up arrow, so the draft is saved on the way into history and put back on the way out the bottom. Commands go into history alongside prompts — recalling `/restore 4,5` is the point of having it.
+
+**Arrows belong to the command list while it is open and to history otherwise**, which is why `esc` has to be able to close the list: without it, a `/` typed by accident takes the arrows hostage.
+
+**`?` on an empty prompt lists the bindings**, and any key dismisses it. On a prompt with text in it, `?` is a question mark. Discoverability is the whole reason the bindings exist — one a user cannot find is one they do not have.
+
+**There is no `ctrl-l`.** Clearing the screen would destroy the settled transcript permanently: it lives in the terminal's real scrollback, and `Static` will not reprint it. `/clear` starts a fresh conversation, which is the thing people actually want.
+
+`scripts/keys-check.tsx` is the guard, and it probes every binding by the text that comes out of the composer rather than by finding the cursor in the frame — a cursor read off the rendered row passes on a build that draws it in the right place and edits in the wrong one.
+
 ## Colour and motion
 
 **Commands are tinted, not parsed.** `highlightCommand` colours the binary, flags and paths — the three things a reader looks for. It decides nothing, so being wrong about an exotic quoting case costs nothing.
