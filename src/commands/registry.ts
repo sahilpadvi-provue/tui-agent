@@ -182,7 +182,18 @@ export const COMMANDS: Command[] = [
 ];
 
 export function isCommand(input: string): boolean {
-  return input.trimStart().startsWith("/");
+  const text = input.trimStart();
+  if (!text.startsWith("/")) return false;
+  // An absolute path also starts with a slash, and asking about one is an
+  // ordinary thing to do -- so the first word decides. A command is named by
+  // a bare word; a path carries a separator or an extension. Getting this
+  // wrong is silent in the worst way: "/src/ui/layout.ts what does STEP do"
+  // was answered with `unknown command` and never reached the model.
+  //
+  // A name that matches nothing still runs, so a typo is told it is a typo
+  // rather than being handed to the model as a question.
+  const word = text.slice(1).split(/\s/)[0] ?? "";
+  return word !== "" && !word.includes("/") && !word.includes(".");
 }
 
 /** Splits "/restore 1,2" into its name and the rest. */

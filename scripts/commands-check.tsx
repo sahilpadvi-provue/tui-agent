@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { EventBus } from "../src/core/bus.ts";
 import { App } from "../src/ui/App.tsx";
 import { project } from "../src/core/projection.ts";
-import { runCommand, COMMANDS, type CommandContext } from "../src/commands/registry.ts";
+import { runCommand, isCommand, COMMANDS, type CommandContext } from "../src/commands/registry.ts";
 import type { AgentEvent } from "../src/core/events.ts";
 
 let failures = 0;
@@ -150,13 +150,14 @@ check("ordinary text shows no list", !none.includes("list these commands"));
 async function drive(keys: string[], width = 100) {
   let out = "";
   const invoked: string[] = [];
+  const prompted: string[] = [];
   const so = Object.assign(new Writable({ write(c, _e, cb) { out += String(c); cb(); return true; } }),
     { columns: width, rows: 30, isTTY: true });
   const si = Object.assign(new PassThrough(), { isTTY: true, setRawMode() {}, ref() {}, unref() {} });
   const b = new EventBus();
   const a = render(
     <App bus={b} cwd={ws} model="m" version="0" backend="b" sandbox="off" busy={false}
-         onSubmit={() => {}} onCommand={(c) => invoked.push(c)} onCancel={() => {}} onPermission={() => {}} />,
+         onSubmit={(t) => prompted.push(t)} onCommand={(c) => invoked.push(c)} onCancel={() => {}} onPermission={() => {}} />,
     { stdout: so as any, stdin: si as any, patchConsole: false },
   );
   await new Promise((r) => setTimeout(r, 110));
@@ -168,7 +169,7 @@ async function drive(keys: string[], width = 100) {
   const last = (frames[frames.length - 1] ?? "").replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "");
   const highlighted = last.split("\n").filter((l) => l.trim().startsWith("\u203a") && l.includes("/"));
   const prompt = last.split("\n").find((l) => l.includes("\u203a ") && l.includes("\u258f")) ?? "";
-  return { invoked, highlighted: highlighted.map((l) => l.trim().slice(2).split(" ")[0]), prompt: prompt.trim() };
+  return { invoked, prompted, highlighted: highlighted.map((l) => l.trim().slice(2).split(" ")[0]), prompt: prompt.trim() };
 }
 
 const DOWN = "\x1b[B";
@@ -200,5 +201,36 @@ check("then it runs with what was typed", withArgs.invoked.join() === "/restore 
 const tabbed = await drive(["/", "c", "\t"]);
 check("tab completes without running", tabbed.invoked.length === 0 && tabbed.prompt.includes("/context"),
   JSON.stringify(tabbed.prompt));
+
+// ---------------------------------------------------------------------------
+// A leading slash is not enough to make something a command.
+//
+// An absolute path starts with one too, and asking about a file is an ordinary
+// thing to do. This was answered with `unknown command` and never reached the
+// model, which is the worst shape of failure: confident and wrong.
+// ---------------------------------------------------------------------------
+
+for (const [text, kind] of [
+  ["/help", "command"],
+  ["/restore 4,5", "command"],
+  ["/halp", "command"],
+  ["/Users/me/project/src/App.tsx", "prompt"],
+  ["/src/ui/layout.ts what does STEP do", "prompt"],
+  ["/notes.md", "prompt"],
+  ["look at /Users/me/x.ts", "prompt"],
+] as const) {
+  check(`${JSON.stringify(text)} is a ${kind}`, isCommand(text) === (kind === "command"));
+}
+
+// And through the composer, which is where it actually bit.
+const pathTyped = await drive(["/Users/me/project/src/App.tsx", "\r"]);
+check("a typed path is sent to the model, not run as a command",
+  pathTyped.prompted.join() === "/Users/me/project/src/App.tsx" && pathTyped.invoked.length === 0,
+  `prompted ${JSON.stringify(pathTyped.prompted)} invoked ${JSON.stringify(pathTyped.invoked)}`);
+
+const stillRuns = await drive(["/help", "\r"]);
+check("a real command still runs", stillRuns.invoked.join() === "/help" && stillRuns.prompted.length === 0,
+  `invoked ${JSON.stringify(stillRuns.invoked)}`);
+
 
 process.exit(failures ? 1 : 0);
