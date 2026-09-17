@@ -112,6 +112,7 @@ that one file.
 | A session survives the process that made it | `bun run scripts/resume-check.ts` | passing |
 | Commands run locally and stay out of the model's context | `bun run scripts/commands-check.tsx` | passing |
 | Resizing does not reprint, and the live region stays bounded | `bun run scripts/resize-check.tsx` | passing |
+| No live line reaches the terminal width | `bun run scripts/reflow-check.tsx` | passing |
 | Sandbox blocks writes and egress | `bun run scripts/sandbox-check.ts` | passing |
 | Checkpoint restores a damaged file | `bun run scripts/checkpoint-check.ts` | passing |
 

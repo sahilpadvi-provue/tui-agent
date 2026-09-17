@@ -5,8 +5,8 @@ import { Markdown } from "./markdown.tsx";
 import { bannerLines } from "./banner.ts";
 import {
   BLANK, DEPTH, GUTTER, STEP,
-  clip, highlightCommand, measureAt, outputLines, shimmer, shortenPath, styled,
-  summariseCall, verbFor, wrap,
+  clip, fitFields, highlightCommand, measureAt, outputLines, shimmer, shortenPath,
+  styled, summariseCall, verbFor, wrap,
   type Line as L,
 } from "./layout.ts";
 import { radiusLines } from "../permissions/policy.ts";
@@ -203,11 +203,26 @@ export function App({
   const title = useMemo(() => {
     const first = state.items.find((i) => i.kind === "user");
     if (!first || first.kind !== "user") return "";
-    const room = term - GUTTER * 2 - model.length - where.length - usage.length - 14;
+    // Three separators at five columns each, the gutter, and a column of slack
+    // so the row never lands exactly on the terminal's width.
+    const room = term - GUTTER - model.length - where.length - usage.length - 3 * 5 - 2;
     if (room < 12) return "";
     const words = first.text.trim().split(/\s+/).slice(0, 8).join(" ");
     return words.length > room ? words.slice(0, room - 1) + "\u2026" : words;
   }, [state.items, term, model, where, usage]);
+
+  // Least important first: fitFields drops from the front while the line is
+  // too wide, so a narrow terminal loses the title, then the token counts,
+  // before it loses what model is running.
+  const candidates = [
+    { text: title, color: "cyan" as const },
+    { text: usage, dim: true },
+    { text: where, color: "green" as const },
+    { text: model, color: "yellow" as const },
+  ].filter((f) => f.text);
+  const keptText = new Set(fitFields(term - GUTTER, candidates.map((f) => ({ text: f.text }))));
+  const footer = candidates.filter((f) => keptText.has(f.text)).reverse();
+
 
   return (
     <>
@@ -240,23 +255,24 @@ export function App({
           </Stack>
         ))}
 
+        {/*
+          Nothing here draws a border. A rule spans the terminal, and any line
+          in the live frame that reaches the terminal's width leaks a row every
+          time the window narrows, because Ink erases by logical line count
+          while the terminal re-wraps to physical rows. The prompt glyph and
+          the blank row above carry the separation instead.
+          See scripts/reflow-check.tsx.
+        */}
         {state.pending ? (
-          <Stack direction="column" padX={GUTTER} border borderSides="y" borderColor="yellow">
-            <Label bold color="yellow">{`approve ${state.pending.tool}`}</Label>
+          <Stack direction="column" padX={GUTTER}>
+            <Label bold color="yellow">{`\u25b8 approve ${state.pending.tool}`}</Label>
             {radiusLines(state.pending.radius).map((l, i) => (
               <Label key={i} dim>{clip(l, term - 4)}</Label>
             ))}
             <Label dim>{"[y] once    [a] session    [n] deny"}</Label>
           </Stack>
         ) : (
-          <Stack
-            direction="row"
-            padX={GUTTER}
-            border
-            borderSides="y"
-            borderDim={!confirmQuit}
-            borderColor={confirmQuit ? "yellow" : undefined}
-          >
+          <Stack direction="row" padX={GUTTER}>
             <Label color={confirmQuit ? "yellow" : "cyan"}>
               {confirmQuit ? "! " : "\u203a "}
             </Label>
@@ -288,19 +304,12 @@ export function App({
           </Stack>
         )}
 
-        <Stack direction="row" padX={GUTTER} align="between">
-          <Label>
-            <Label color="yellow">{model}</Label>
-            <Label dim>{"  \u00b7  "}</Label>
-            <Label color="green">{where}</Label>
-            {title && (
-              <>
-                <Label dim>{"  \u00b7  "}</Label>
-                <Label color="cyan">{title}</Label>
-              </>
-            )}
-          </Label>
-          <Label dim>{usage}</Label>
+        <Stack direction="row" padX={GUTTER}>
+          {footer.map((f, i) => (
+            <Label key={f.text} color={f.color} dim={f.dim}>
+              {(i > 0 ? "  \u00b7  " : "") + f.text}
+            </Label>
+          ))}
         </Stack>
       </Stack>
     </>

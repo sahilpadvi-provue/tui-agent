@@ -263,3 +263,33 @@ export function highlightCommand(command: string): Span[] {
   }
   return out;
 }
+
+
+/**
+ * Fits the footer to the terminal by dropping fields, not by cutting words.
+ *
+ * It sits in the live frame, so a line that reaches the terminal's width costs
+ * a leaked row on every narrowing. Truncating a model name mid-word to avoid
+ * that reads as a bug; dropping the least useful field does not. Fields are
+ * given least-important first and kept while they fit.
+ */
+export function fitFields(
+  width: number,
+  fields: { text: string; keep?: boolean }[],
+  separator = "  \u00b7  ",
+): string[] {
+  const kept = fields.filter((f) => f.keep !== false || true).map((f) => f.text).filter(Boolean);
+  const room = Math.max(0, width - 1);
+
+  const widthOf = (list: string[]) =>
+    list.reduce((n, t) => n + [...t].length, 0) + separator.length * Math.max(0, list.length - 1);
+
+  // Drop from the front -- callers pass least important first.
+  const out = [...kept];
+  while (out.length > 1 && widthOf(out) > room) out.shift();
+
+  // A single field that still does not fit is clipped, because something has
+  // to give and one field is already the minimum.
+  if (out.length === 1 && widthOf(out) > room) return [clip(out[0]!, room)];
+  return out;
+}
