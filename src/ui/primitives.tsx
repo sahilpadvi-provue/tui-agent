@@ -76,7 +76,7 @@ export function Stack({
 
 export type LabelProps = {
   children?: ReactNode;
-  color?: Color;
+  color?: Color | string;
   /** Fills the run's cells. Used to band a whole row, never for emphasis. */
   bg?: string;
   dim?: boolean;

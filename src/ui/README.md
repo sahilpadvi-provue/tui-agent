@@ -73,6 +73,14 @@ A turn can run for minutes. Blocking input for that long means the next instruct
 
 This is why the working indicator is its own row rather than text inside the composer — the composer is needed for its actual job the whole time. `scripts/queue-check.tsx` drives real keystrokes through a busy app and is the guard.
 
+## Colour and motion
+
+**Commands are tinted, not parsed.** `highlightCommand` colours the binary, flags and paths — the three things a reader looks for. It decides nothing, so being wrong about an exotic quoting case costs nothing.
+
+**The working indicator shimmers** rather than spinning: a brightness wave runs through the word itself, which says "alive" without spending a column or pulling the eye off the text. It ticks at 90ms, faster than the elapsed clock, because a second is long enough to look stopped.
+
+**Verifying colour needs the escapes, not the text.** Two traps, both of which cost time here: `FORCE_COLOR=3` must be set or Ink strips every code and the output looks unstyled; and chalk usually runs at level 2, so a hex colour is emitted as 256-colour `38;5;N`, not truecolor `38;2;r;g;b`. Searching for the wrong form reads as "the feature is broken". Also note that per-character styling means a styled word never appears as a contiguous string in the buffer — grepping for it finds nothing.
+
 ## Rendering discipline
 
 - Bound every output. Tool output is capped in the view model, not just at the tool.

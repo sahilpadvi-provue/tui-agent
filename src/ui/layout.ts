@@ -52,7 +52,8 @@ export const OUTPUT_LINES = 8;
  */
 export type Span = {
   readonly text: string;
-  readonly color?: Color;
+  /** A named colour, or a hex string for shades the palette does not name. */
+  readonly color?: Color | string;
   readonly bg?: string;
   readonly dim?: boolean;
   readonly bold?: boolean;
@@ -212,4 +213,53 @@ export function shortenPath(p: string, width: number): string {
   const home = process.env.HOME;
   const short = home && p.startsWith(home) ? `~${p.slice(home.length)}` : p;
   return short.length <= width ? short : "…" + short.slice(-(width - 1));
+}
+
+/**
+ * A brightness wave moving through a word.
+ *
+ * A static label and a hung process look identical. A spinner says "alive"
+ * but sits in one cell; a wave through the word itself says it without
+ * spending a column or pulling the eye off the text. The trail is short so
+ * the word stays readable rather than becoming an animation.
+ */
+const SHIMMER = ["#ffffff", "#d4d4d4", "#a0a0a0", "#7a7a7a", "#5f5f5f"] as const;
+
+export function shimmer(text: string, phase: number): Span[] {
+  const span = text.length + SHIMMER.length * 2;
+  const head = phase % span;
+  return [...text].map((ch, i) => {
+    const distance = Math.abs(i - head);
+    const shade = SHIMMER[Math.min(distance, SHIMMER.length - 1)]!;
+    return { text: ch, color: shade };
+  });
+}
+
+/**
+ * Colours the parts of a command a reader actually looks for: what ran, which
+ * flags, and which paths. Not a shell parser -- it never decides anything, it
+ * only tints, so being wrong about an exotic quoting case costs nothing.
+ */
+export function highlightCommand(command: string): Span[] {
+  const out: Span[] = [];
+  const tokens = command.split(/(\s+)/);
+  let seenVerb = false;
+
+  for (const token of tokens) {
+    if (/^\s+$/.test(token)) {
+      out.push({ text: token });
+      continue;
+    }
+    if (!seenVerb) {
+      seenVerb = true;
+      // The binary is the one word worth finding at a glance.
+      out.push({ text: token, color: "cyan" });
+      continue;
+    }
+    if (token.startsWith("-")) out.push({ text: token, color: "yellow" });
+    else if (token.includes("/")) out.push({ text: token, dim: true });
+    else if (/^[|;&><]+$/.test(token)) out.push({ text: token, color: "magenta" });
+    else out.push({ text: token });
+  }
+  return out;
 }

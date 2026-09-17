@@ -5,7 +5,8 @@ import { Markdown } from "./markdown.tsx";
 import { bannerLines } from "./banner.ts";
 import {
   BLANK, DEPTH, GUTTER, STEP,
-  clip, measureAt, outputLines, shortenPath, styled, summariseCall, verbFor, wrap,
+  clip, highlightCommand, measureAt, outputLines, shimmer, shortenPath, styled,
+  summariseCall, verbFor, wrap,
   type Line as L,
 } from "./layout.ts";
 import { radiusLines } from "../permissions/policy.ts";
@@ -47,6 +48,7 @@ export function App({
   const [confirmQuit, setConfirmQuit] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [queued, setQueued] = useState<string[]>([]);
+  const [phase, setPhase] = useState(0);
   const startedAt = useRef<number | null>(null);
   const wasBusy = useRef(false);
   const { stdout } = useStdout();
@@ -63,6 +65,14 @@ export function App({
     }
     wasBusy.current = busy;
   }, [busy, queued, onSubmit]);
+
+  // The wave through "working" runs faster than the clock: a second is long
+  // enough to look stopped.
+  useEffect(() => {
+    if (!busy) return;
+    const id = setInterval(() => setPhase((p) => p + 1), 90);
+    return () => clearInterval(id);
+  }, [busy]);
 
   // A local model can think for minutes. Without a clock the screen is
   // indistinguishable from a hang, and the first instinct is to kill it.
@@ -158,7 +168,11 @@ export function App({
         {busy && !state.pending && (
           <Stack direction="row" padX={GUTTER}>
             <Label color="cyan">{"\u00b7 "}</Label>
-            <Label bold>working</Label>
+            <Label bold>
+              {shimmer("working", phase).map((sp, i) => (
+                <Label key={i} color={sp.color}>{sp.text}</Label>
+              ))}
+            </Label>
             <Label dim>{`  ${formatElapsed(elapsed)} \u00b7 esc to interrupt`}</Label>
           </Stack>
         )}
@@ -381,12 +395,17 @@ function renderItem(i: ViewItem, term: number): L[] {
       const verb = verbFor(i.name);
       const summary = i.args !== undefined ? summariseCall(i.name, i.args) : "";
       const room = w - mark.length - verb.length - 3;
+      const shown = summary ? clip(summary, Math.max(8, room)) : "";
       const out: L[] = [
         styled(
           DEPTH.did,
           { text: `${mark} `, color: markColor },
           { text: verb, bold: true, color: i.ok === false ? "red" : undefined },
-          summary ? { text: ` ${clip(summary, Math.max(8, room))}` } : null,
+          ...(shown
+            ? i.name === "shell"
+              ? [{ text: " " }, ...highlightCommand(shown)]
+              : [{ text: ` ${shown}`, color: "cyan" as const }]
+            : []),
         ),
       ];
 
