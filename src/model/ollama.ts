@@ -1,13 +1,60 @@
 import type { ModelChunk, ModelClient, ModelFacts } from "./client.ts";
 import type { ConvoMessage } from "../core/projection.ts";
 
+type WireToolCall = {
+  id?: string;
+  function?: { name?: string; arguments?: unknown; index?: number };
+};
+
 type OllamaMessage = {
   role: string;
   content: string;
   thinking?: string;
   tool_name?: string;
-  tool_calls?: { function: { name: string; arguments: unknown } }[];
+  tool_calls?: WireToolCall[];
 };
+
+/**
+ * Accumulates tool calls by index so a call split across chunks is assembled
+ * rather than emitted in pieces.
+ */
+class ToolCallAccumulator {
+  #byIndex = new Map<number, { id?: string; name: string; args: unknown }>();
+
+  add(calls: WireToolCall[]): void {
+    for (const [position, call] of calls.entries()) {
+      const index = call.function?.index ?? position;
+      const existing = this.#byIndex.get(index) ?? { name: "", args: undefined };
+      this.#byIndex.set(index, {
+        ...(call.id ?? existing.id ? { id: call.id ?? existing.id } : {}),
+        name: call.function?.name ?? existing.name,
+        args: call.function?.arguments ?? existing.args,
+      });
+    }
+  }
+
+  drain(): { id: string; name: string; args: unknown }[] {
+    const out = [...this.#byIndex.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([index, c]) => ({
+        id: c.id ?? `call_${Date.now()}_${index}`,
+        name: c.name,
+        args: parseArgs(c.args),
+      }));
+    this.#byIndex.clear();
+    return out;
+  }
+}
+
+/** Ollama sends an object; a JSON string is accepted for provider parity. */
+function parseArgs(args: unknown): unknown {
+  if (typeof args !== "string") return args ?? {};
+  try {
+    return JSON.parse(args);
+  } catch {
+    return args;
+  }
+}
 
 /**
  * Ollama stands in for the gateway during phase 1.
@@ -27,7 +74,10 @@ export class OllamaClient implements ModelClient {
     this.name = model;
     this.facts = {
       contextWindow:
-        facts?.contextWindow ?? Number(process.env.CONTEXT_WINDOW ?? 40_960),
+        // Comfortably above Ollama's own default, which truncates silently,
+        // without the KV cache that a full 40k window allocates -- measured at
+        // roughly twice the wall time on an 8B model for no gain.
+        facts?.contextWindow ?? Number(process.env.CONTEXT_WINDOW ?? 16_384),
       cacheThreshold: facts?.cacheThreshold ?? null,
       supportsTools: facts?.supportsTools ?? true,
     };
@@ -46,6 +96,18 @@ export class OllamaClient implements ModelClient {
         messages: messages.map(toOllama),
         tools: tools.length ? tools : undefined,
         stream: true,
+        // Always requested. think:false does not silence reasoning on every
+        // model -- it only stops the separation, and the reasoning then
+        // arrives inside content with an unbalanced closing tag. Asking for
+        // it keeps the two channels apart and lets the client decide.
+        think: true,
+        options: {
+          // Ollama's own default is far smaller than an agentic system prompt
+          // plus tool results needs, and it truncates silently. The context
+          // manager budgets against this number, so it has to be the number
+          // actually in force.
+          num_ctx: this.facts.contextWindow,
+        },
       }),
       signal,
     });
@@ -56,9 +118,9 @@ export class OllamaClient implements ModelClient {
 
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
+    const calls = new ToolCallAccumulator();
     let buffer = "";
     let thinking = "";
-    let callSeq = 0;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -80,18 +142,14 @@ export class OllamaClient implements ModelClient {
         }
         if (m?.content) yield { kind: "text", text: m.content };
 
-        for (const tc of m?.tool_calls ?? []) {
-          yield {
-            kind: "tool_call",
-            call: {
-              id: `call_${Date.now()}_${callSeq++}`,
-              name: tc.function.name,
-              args: tc.function.arguments,
-            },
-          };
-        }
+        if (m?.tool_calls?.length) calls.add(m.tool_calls);
 
         if (j.done) {
+          // Emitted only once the stream ends: a call may arrive whole in one
+          // chunk or split across several keyed by index, and a partial call
+          // handed to the loop is the shape that loses its id and name.
+          for (const call of calls.drain()) yield { kind: "tool_call", call };
+
           yield {
             kind: "done",
             usage: {
