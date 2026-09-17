@@ -42,8 +42,26 @@ export const MEASURE = 88;
 /** Tool output lines kept on screen. Below this a "more" marker costs more than it saves. */
 export const OUTPUT_LINES = 8;
 
-export type Line = {
+/**
+ * A run of text with one weight.
+ *
+ * A terminal has one typeface, so hierarchy is built from colour, dim and
+ * bold alone. A row that can only carry a single weight flattens exactly the
+ * distinctions worth making -- which mark, which tool, which argument -- so a
+ * line is a sequence of these instead.
+ */
+export type Span = {
   readonly text: string;
+  readonly color?: Color;
+  readonly dim?: boolean;
+  readonly bold?: boolean;
+};
+
+export type Line = {
+  /** Used when `spans` is absent, and for measuring either way. */
+  readonly text: string;
+  /** Styled runs, left to right. Overrides the line-level styling. */
+  readonly spans?: Span[];
   readonly depth?: number;
   readonly color?: Color;
   readonly dim?: boolean;
@@ -51,6 +69,12 @@ export type Line = {
   /** Render inline markdown. Prose only; never output or code. */
   readonly md?: boolean;
 };
+
+/** Builds a line from spans, keeping `text` in sync for width maths. */
+export function styled(depth: number, ...spans: (Span | null | undefined)[]): Line {
+  const kept = spans.filter((s): s is Span => !!s && s.text !== "");
+  return { text: kept.map((s) => s.text).join(""), spans: kept, depth };
+}
 
 export const BLANK: Line = { text: "" };
 

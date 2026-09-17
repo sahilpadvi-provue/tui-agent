@@ -1,11 +1,11 @@
-import React, { useEffect, useMemo, useReducer, useState } from "react";
+import React, { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { Stack, Label, Settled, useKeys, useStdout, useApp, type Color } from "./primitives.tsx";
 import { reduce, initialState, type ViewItem } from "./model.ts";
 import { Markdown } from "./markdown.tsx";
 import { bannerLines } from "./banner.ts";
 import {
   BLANK, DEPTH, GUTTER, STEP,
-  clip, measureAt, outputLines, shortenPath, summariseCall, wrap,
+  clip, measureAt, outputLines, shortenPath, styled, summariseCall, wrap,
   type Line as L,
 } from "./layout.ts";
 import { radiusLines } from "../permissions/policy.ts";
@@ -45,11 +45,28 @@ export function App({
   const [state, dispatch] = useReducer(reduce, initialState);
   const [input, setInput] = useState("");
   const [confirmQuit, setConfirmQuit] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const startedAt = useRef<number | null>(null);
   const { stdout } = useStdout();
   const { exit } = useApp();
 
   // The only connection to the runtime: a subscription. No calls in, ever.
   useEffect(() => bus.on((e) => dispatch(e)), [bus]);
+
+  // A local model can think for minutes. Without a clock the screen is
+  // indistinguishable from a hang, and the first instinct is to kill it.
+  useEffect(() => {
+    if (!busy) {
+      startedAt.current = null;
+      setElapsed(0);
+      return;
+    }
+    startedAt.current = Date.now();
+    const id = setInterval(() => {
+      if (startedAt.current) setElapsed(Math.floor((Date.now() - startedAt.current) / 1000));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [busy]);
 
   useKeys((char, key) => {
     if (state.pending) {
@@ -122,10 +139,6 @@ export function App({
           <Row key={`live-${i}`} line={l} />
         ))}
 
-        {state.items.length === 0 && !busy && (
-          <Row line={{ text: "describe a change, or ask about the code", dim: true }} />
-        )}
-
         {state.pending ? (
           <Stack direction="column" padX={GUTTER} border borderSides="y" borderColor="yellow">
             <Label bold color="yellow">{`approve ${state.pending.tool}`}</Label>
@@ -150,8 +163,10 @@ export function App({
               {confirmQuit
                 ? "ctrl-c again to exit, any key to stay"
                 : busy
-                  ? "working\u2026  esc to cancel"
-                  : input + "\u258f"}
+                  ? `working ${formatElapsed(elapsed)} \u00b7 esc to interrupt`
+                  : input
+                    ? input + "\u258f"
+                    : "\u258f describe a change, or ask about the code"}
             </Label>
           </Stack>
         )}
@@ -171,11 +186,29 @@ function Row({ line }: { line: L }) {
   // An empty Text renders no row at all, so a blank line is a single space.
   if (!line.text) return <Label> </Label>;
   if (line.md) return <Markdown line={line.text} indent={pad} color={line.color} dim={line.dim} />;
+  if (line.spans) {
+    return (
+      <Label>
+        {pad}
+        {line.spans.map((s, i) => (
+          <Label key={i} color={s.color} dim={s.dim} bold={s.bold}>
+            {s.text}
+          </Label>
+        ))}
+      </Label>
+    );
+  }
   return (
     <Label color={line.color} dim={line.dim} bold={line.bold}>
       {pad + line.text}
     </Label>
   );
+}
+
+function formatElapsed(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  return `${m}m ${String(seconds % 60).padStart(2, "0")}s`;
 }
 
 /** Thousands separator without the noise of full locale formatting. */
@@ -199,6 +232,9 @@ function basename(p: string): string {
 function gapBefore(prev: ViewItem["kind"] | null, next: ViewItem["kind"]): number {
   if (prev === null) return 0;
   if (next === "user") return 1;
+  // The request and the work it triggered are different things; running them
+  // together makes the agent's first move look like part of the sentence.
+  if (prev === "user") return 1;
   if (next === "assistant" && prev !== "assistant") return 1;
   if (next === "compaction" || prev === "compaction") return 1;
   return 0;
@@ -240,13 +276,17 @@ function countSettled(items: ViewItem[]): number {
 
 function renderItem(i: ViewItem, term: number): L[] {
   switch (i.kind) {
+    // The request is the loudest thing on screen: it is what everything below
+    // it is answering, and the eye should find it without searching.
     case "user": {
       const w = measureAt(DEPTH.said, term) - 2;
-      return wrap(i.text, w).map((t, n) => ({
-        text: (n === 0 ? "\u203a " : "  ") + t,
-        depth: DEPTH.said,
-        bold: true,
-      }));
+      return wrap(i.text, w).map((t, n) =>
+        styled(
+          DEPTH.said,
+          n === 0 ? { text: "\u203a ", color: "cyan" } : { text: "  " },
+          { text: t, bold: true },
+        ),
+      );
     }
 
     case "assistant":
@@ -258,21 +298,28 @@ function renderItem(i: ViewItem, term: number): L[] {
 
     case "reasoning":
       return [{
-        text: i.done ? `thought for ${i.chars.toLocaleString()} chars` : `thinking\u2026`,
+        text: i.done ? `thought for ${i.chars.toLocaleString()} chars` : "thinking\u2026",
         depth: DEPTH.did,
         dim: true,
       }];
 
     case "tool": {
       const w = measureAt(DEPTH.did, term);
+      // Three weights on one line: a coloured mark carries status, the tool
+      // name carries what kind of thing happened, and the argument -- the
+      // longest part and the least often needed -- recedes.
       const mark = i.running ? "\u00b7" : i.ok === false ? "\u2717" : "\u2713";
+      const markColor = i.running ? "cyan" : i.ok === false ? "red" : "green";
       const summary = i.args !== undefined ? summariseCall(i.name, i.args) : "";
-      const head = summary ? `${mark} ${i.name}  ${summary}` : `${mark} ${i.name}`;
-      const out: L[] = [{
-        text: clip(head, w),
-        depth: DEPTH.did,
-        color: i.ok === false ? "red" : undefined,
-      }];
+      const room = w - mark.length - i.name.length - 3;
+      const out: L[] = [
+        styled(
+          DEPTH.did,
+          { text: `${mark} `, color: markColor },
+          { text: i.name, color: i.ok === false ? "red" : undefined },
+          summary ? { text: `  ${clip(summary, Math.max(8, room))}`, dim: true } : null,
+        ),
+      ];
 
       const body = i.running ? i.output : i.result;
       if (body?.trim()) {
@@ -281,9 +328,17 @@ function renderItem(i: ViewItem, term: number): L[] {
         // While running, the tail is what is happening; once finished, the
         // head is what happened.
         const shown = i.running ? lines.slice(-5) : lines;
-        for (const l of shown) out.push({ text: clip(l, dw), depth: DEPTH.detail, dim: true });
+        shown.forEach((l, n) => {
+          out.push(
+            styled(
+              DEPTH.detail,
+              { text: n === 0 ? "\u2514 " : "  ", dim: true },
+              { text: clip(l, dw - 2), dim: true },
+            ),
+          );
+        });
         if (!i.running && hidden > 0) {
-          out.push({ text: `\u2026 ${hidden} more lines`, depth: DEPTH.detail, dim: true });
+          out.push({ text: `  \u2026 +${hidden} lines`, depth: DEPTH.detail, dim: true });
         }
       }
       return out;

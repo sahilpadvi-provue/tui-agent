@@ -64,9 +64,15 @@ await new Promise((r) => setTimeout(r, 250));
 app.unmount();
 await app.waitUntilExit();
 
-const frame = buf.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "");
+// RAW=1 keeps the escape sequences, so styling can be inspected rather than
+// assumed -- a terminal's whole type hierarchy lives in them.
+const frame = process.env.RAW ? buf : buf.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "");
 const lines = frame.split("\n");
-const ruler = "0123456789".repeat(Math.ceil(COLS / 10)).slice(0, COLS);
-console.log("    " + ruler);
-lines.forEach((l, i) => console.log(String(i + 1).padStart(3) + " " + l.replace(/\s+$/, "")));
+if (!process.env.RAW) {
+  const ruler = "0123456789".repeat(Math.ceil(COLS / 10)).slice(0, COLS);
+  console.log("    " + ruler);
+}
+lines.forEach((l, i) =>
+  console.log(process.env.RAW ? l : String(i + 1).padStart(3) + " " + l.replace(/\s+$/, "")),
+);
 console.log(`\n${lines.length} lines at ${COLS} columns`);

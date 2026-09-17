@@ -1,4 +1,4 @@
-import type { Line } from "./layout.ts";
+import { styled, type Line } from "./layout.ts";
 
 /**
  * What is running, before anything has happened.
