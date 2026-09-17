@@ -86,3 +86,6 @@ async function run(text: string) {
 }
 
 await instance.waitUntilExit();
+// An in-flight model request or raw-mode stdin can hold the process open
+// after the UI unmounts; the user asked to leave, so leave.
+process.exit(0);

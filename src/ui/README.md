@@ -4,6 +4,7 @@ The terminal client. One subscriber to the event bus among several that could ex
 
 ## What lives here
 
+- **`layout.ts`** — the spacing system. Every column and blank row on screen comes from here.
 - **`primitives.tsx`** — the only module that imports `ink`.
 - **`model.ts`** — view state as a fold over the event stream.
 - **`markdown.tsx`** — inline markdown, so models' `**bold**` is not shown raw.
@@ -23,6 +24,29 @@ The terminal client. One subscriber to the event bus among several that could ex
 
 **No fixed-height panes.** The app occupies exactly the rows it needs. Anything that reserves full height produces an empty band between the content and the prompt.
 
+## The spacing system
+
+Four numbers, in `layout.ts`. Anything new should replace one of them, not join them.
+
+| | | |
+| --- | --- | --- |
+| `GUTTER` | 2 | Left page padding. Two so the transcript aligns with the composer's *text* rather than its border. |
+| `STEP` | 2 | One indent level. |
+| `MEASURE` | 88 | Where prose stops, however wide the terminal. |
+| `OUTPUT_LINES` | 8 | Tool output kept on screen before a "more" marker. |
+
+**Depth carries meaning**, so the conversation can be found without reading it:
+
+```
+  › what was said          depth 0 — the request, the answer
+    ✓ what the agent did   depth 1 — tool calls, reasoning, errors
+      what came back       depth 2 — tool output
+```
+
+**A blank row is the only separator this UI has**, so it is spent where the reader changes what they are doing: before a new exchange, and when moving from the agent's work back to its answer. Consecutive tool calls are one continuous action and get none — spacing them out is what turns a session into a scroll. The rule lives in `gapBefore()` and depends only on an item and the one before it, which is what keeps the settled list append-only for `Static`.
+
+**Prose wraps; output and code clip.** Re-flowing a diff or a stack trace to a narrow measure destroys the alignment that makes it readable, so those are truncated at the available width instead.
+
 ## Rendering discipline
 
 - Bound every output. Tool output is capped in the view model, not just at the tool.
@@ -34,4 +58,4 @@ The terminal client. One subscriber to the event bus among several that could ex
 - Ink 7.1.1 has **no** `contentOffsetX` / `contentOffsetY`. Scrolling is userland — which is moot here, because the terminal owns scrolling now.
 - `useInput` fires regardless of focus. `useFocus` / `useFocusManager` exist, but two components listening for arrow keys will both react. Arbitrate explicitly.
 - `maxFps` is a `render()` option (default 30, we set 60). Claims that Ink is locked to ~32 fps describe the default, not a limit.
-- Ctrl-C is not wired to exit (`exitOnCtrlC: false`) — it cancels the running turn.
+- Ctrl-C is not wired to Ink's own exit (`exitOnCtrlC: false`). We handle it: it cancels a running turn, and when idle the first press arms a confirmation and the second quits. Ctrl-D on an empty prompt quits immediately. Anything that takes over Ctrl-C must leave a way out — `scripts/quit-check.ts` is the guard.

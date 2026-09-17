@@ -1,0 +1,145 @@
+/**
+ * The spacing system.
+ *
+ * A terminal has two units -- columns and rows -- so the scale is deliberately
+ * tiny: one indent step, one blank row, one measure. Everything on screen
+ * resolves to those. Any new number added here should replace one of them,
+ * not join them.
+ */
+
+import type { Color } from "./primitives.tsx";
+
+/**
+ * Columns of left page padding.
+ *
+ * Two, not one, so the transcript lines up with the composer's text rather
+ * than with its border -- the composer is boxed, and one column of padding
+ * inside a box reads as cramped.
+ */
+export const GUTTER = 2;
+
+/** One level of nesting. Three levels exist and no more is needed. */
+export const STEP = 2;
+
+/**
+ * Depth carries meaning, so the reader can find the conversation without
+ * reading it:
+ *   0  what was said      -- the user's request, the agent's answer
+ *   1  what the agent did -- tool calls, reasoning, errors
+ *   2  what came back     -- tool output
+ */
+export const DEPTH = { said: 0, did: 1, detail: 2 } as const;
+
+/**
+ * Prose stops here however wide the terminal is. Long measures are hard to
+ * track back to the next line, and a coding session is mostly scanning.
+ * Output and code are not re-wrapped to it -- they are truncated, because
+ * re-flowing a diff or a stack trace destroys the alignment that makes it
+ * readable.
+ */
+export const MEASURE = 88;
+
+/** Tool output lines kept on screen. Below this a "more" marker costs more than it saves. */
+export const OUTPUT_LINES = 8;
+
+export type Line = {
+  readonly text: string;
+  readonly depth?: number;
+  readonly color?: Color;
+  readonly dim?: boolean;
+  readonly bold?: boolean;
+  /** Render inline markdown. Prose only; never output or code. */
+  readonly md?: boolean;
+};
+
+export const BLANK: Line = { text: "" };
+
+/** Columns available to text at a depth, given the terminal width. */
+export function measureAt(depth: number, termWidth: number): number {
+  const available = Math.max(20, termWidth - GUTTER * 2 - depth * STEP);
+  return Math.min(MEASURE, available);
+}
+
+/** Wraps prose on word boundaries, preserving the blank lines between paragraphs. */
+export function wrap(text: string, width: number): string[] {
+  const out: string[] = [];
+  for (const para of text.split("\n")) {
+    if (para.length <= width) {
+      out.push(para);
+      continue;
+    }
+    let line = "";
+    for (const word of para.split(/\s+/)) {
+      if (line && (line + " " + word).length > width) {
+        out.push(line);
+        line = word;
+      } else {
+        line = line ? `${line} ${word}` : word;
+      }
+    }
+    if (line) out.push(line);
+  }
+  return out;
+}
+
+/** Single-line clip. For output and code, where re-wrapping would mislead. */
+export function clip(s: string, width: number): string {
+  const flat = s.replace(/\t/g, "  ").replace(/\n/g, " ");
+  return flat.length > width ? flat.slice(0, width - 1) + "…" : flat;
+}
+
+/**
+ * The lines of tool output worth showing, plus a marker when any were left out.
+ * Hiding a single line to save a row is not worth the marker that replaces it.
+ */
+export function outputLines(body: string, limit = OUTPUT_LINES): { lines: string[]; hidden: number } {
+  const all = body.split("\n").filter((l) => l.trim() !== "");
+  if (all.length <= limit + 1) return { lines: all, hidden: 0 };
+  return { lines: all.slice(0, limit), hidden: all.length - limit };
+}
+
+/**
+ * What a tool call is doing, in the words the reader cares about.
+ *
+ * The raw argument object clipped at a fixed width usually cuts off exactly
+ * the part that identifies the call -- a path or a command -- and leaves the
+ * scaffolding. Naming the salient field per tool is denser and more useful.
+ */
+export function summariseCall(name: string, args: unknown): string {
+  const a = (args ?? {}) as Record<string, unknown>;
+  const str = (k: string) => (typeof a[k] === "string" ? (a[k] as string) : undefined);
+
+  switch (name) {
+    case "shell":
+      return str("command") ?? "";
+    case "read_file":
+    case "write_file":
+    case "edit_file":
+      return str("path") ?? "";
+    case "replace_lines": {
+      const path = str("path") ?? "";
+      const from = a["start_line"];
+      const to = a["end_line"];
+      return typeof from === "number" ? `${path}:${from}${to !== from ? `-${to}` : ""}` : path;
+    }
+    case "search": {
+      const pattern = str("pattern") ?? "";
+      const where = str("path");
+      return where && where !== "." ? `${pattern}  in ${where}` : pattern;
+    }
+    case "list_files":
+      return str("path") ?? ".";
+    default: {
+      const json = JSON.stringify(args ?? {});
+      return json === "{}" ? "" : json;
+    }
+  }
+}
+
+/** Shortens a path from the left, keeping the end that identifies it. */
+export function shortenPath(p: string, width: number): string {
+  if (p.length <= width) return p;
+  const home = process.env.HOME;
+  const short = home && p.startsWith(home) ? `~${p.slice(home.length)}` : p;
+  return short.length <= width ? short : "…" + short.slice(-(width - 1));
+}

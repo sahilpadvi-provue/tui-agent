@@ -39,11 +39,23 @@ export function blockStyle(line: string): { text: string; bold?: boolean; color?
   return { text: line };
 }
 
-export function Markdown({ line, color, dim }: { line: string; color?: Color; dim?: boolean }): ReactNode {
+export function Markdown({
+  line,
+  indent = "",
+  color,
+  dim,
+}: {
+  line: string;
+  /** Leading columns, passed in so depth stays owned by the layout system. */
+  indent?: string;
+  color?: Color;
+  dim?: boolean;
+}): ReactNode {
   const block = blockStyle(line);
   const segs = segments(block.text);
   return (
     <Label color={color ?? block.color} dim={dim} bold={block.bold}>
+      {indent}
       {segs.map((s, i) => (
         <Label key={i} bold={s.bold} italic={s.italic} color={s.code ? "cyan" : undefined}>
           {s.text}

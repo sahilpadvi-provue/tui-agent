@@ -1,8 +1,13 @@
 import React, { useEffect, useMemo, useReducer, useState } from "react";
-import { Stack, Label, Settled, useKeys, useStdout, type Color } from "./primitives.tsx";
+import { Stack, Label, Settled, useKeys, useStdout, useApp, type Color } from "./primitives.tsx";
 import { reduce, initialState, type ViewItem } from "./model.ts";
 import { Markdown } from "./markdown.tsx";
-import { describeRadius } from "../permissions/policy.ts";
+import {
+  BLANK, DEPTH, GUTTER, STEP,
+  clip, measureAt, outputLines, shortenPath, summariseCall, wrap,
+  type Line as L,
+} from "./layout.ts";
+import { radiusLines } from "../permissions/policy.ts";
 import type { EventBus } from "../core/bus.ts";
 import type { PermissionDecision } from "../core/events.ts";
 
@@ -28,7 +33,9 @@ export type AppProps = {
 export function App({ bus, cwd, model, onSubmit, onCancel, onPermission, busy }: AppProps) {
   const [state, dispatch] = useReducer(reduce, initialState);
   const [input, setInput] = useState("");
+  const [confirmQuit, setConfirmQuit] = useState(false);
   const { stdout } = useStdout();
+  const { exit } = useApp();
 
   // The only connection to the runtime: a subscription. No calls in, ever.
   useEffect(() => bus.on((e) => dispatch(e)), [bus]);
@@ -40,10 +47,30 @@ export function App({ bus, cwd, model, onSubmit, onCancel, onPermission, busy }:
       else if (char === "n" || key.escape) onPermission({ kind: "deny", reason: "declined" });
       return;
     }
-    if (key.escape || (key.ctrl && char === "c")) {
-      if (busy) onCancel();
+    // Ctrl-C interrupts the turn while one is running, and quits when idle --
+    // but only on a second press, because the first is almost always meant to
+    // stop the agent rather than lose the session.
+    if (key.ctrl && char === "c") {
+      if (busy) {
+        onCancel();
+        return;
+      }
+      if (confirmQuit) exit();
+      else setConfirmQuit(true);
       return;
     }
+    // Ctrl-D on an empty prompt is the usual way out of a REPL.
+    if (key.ctrl && char === "d" && !busy && input === "") {
+      exit();
+      return;
+    }
+    if (key.escape) {
+      if (busy) onCancel();
+      else setConfirmQuit(false);
+      return;
+    }
+
+    setConfirmQuit(false);
     if (busy) return;
 
     if (key.return) {
@@ -57,45 +84,114 @@ export function App({ bus, cwd, model, onSubmit, onCancel, onPermission, busy }:
     if (char && !key.ctrl && !key.meta) setInput((s) => s + char);
   });
 
-  const width = Math.max(40, (stdout?.columns ?? 80) - 2);
+  const term = stdout?.columns ?? 80;
 
-  // An item is settled once nothing can change it again. Settled items are
-  // append-only; re-deriving this list must never reorder or drop entries.
+  // An item is settled once nothing can change it again. Settled lines are
+  // append-only for Static, which holds because a gap depends only on an item
+  // and the one before it.
   const settledCount = countSettled(state.items);
   const settled = useMemo(
-    () => state.items.slice(0, settledCount).flatMap((i) => renderItem(i, width)),
-    [settledCount, width, state.items],
+    () => renderRun(state.items.slice(0, settledCount), term, null),
+    [settledCount, term, state.items],
   );
-  const live = state.items.slice(settledCount).flatMap((i) => renderItem(i, width));
+  const lastSettled = state.items[settledCount - 1]?.kind ?? null;
+  const live = renderRun(state.items.slice(settledCount), term, lastSettled);
 
   return (
     <>
-      <Settled items={settled} render={(line, i) => <Line key={i} line={line} />} />
+      <Settled items={settled} render={(line, i) => <Row key={i} line={line} />} />
 
       <Stack direction="column">
         {live.map((l, i) => (
-          <Line key={`live-${i}`} line={l} />
+          <Row key={`live-${i}`} line={l} />
         ))}
+
+        {state.items.length === 0 && !busy && (
+          <Row line={{ text: "describe a change, or ask about the code", dim: true }} />
+        )}
 
         {state.pending ? (
           <Stack direction="column" padX={1} border borderColor="yellow">
-            <Label bold color="yellow">{`approve ${state.pending.tool}?`}</Label>
-            <Label dim>{describeRadius(state.pending.radius)}</Label>
-            <Label>{"[y] once   [a] all session   [n] deny"}</Label>
+            <Label bold color="yellow">{`approve ${state.pending.tool}`}</Label>
+            {radiusLines(state.pending.radius).map((l, i) => (
+              <Label key={i} dim>{clip(l, term - 4)}</Label>
+            ))}
+            <Label dim>{"[y] once    [a] session    [n] deny"}</Label>
           </Stack>
         ) : (
-          <Stack direction="row" padX={1} border borderColor={busy ? "gray" : "cyan"}>
-            <Label color={busy ? "gray" : "cyan"}>{busy ? "… " : "› "}</Label>
-            <Label>{busy ? "working… (esc to cancel)" : input + "▏"}</Label>
+          <Stack direction="row" padX={1} border borderColor={confirmQuit ? "yellow" : busy ? "gray" : "cyan"}>
+            <Label color={confirmQuit ? "yellow" : busy ? "gray" : "cyan"}>
+              {confirmQuit ? "! " : busy ? "\u00b7 " : "\u203a "}
+            </Label>
+            <Label dim={busy || confirmQuit}>
+              {confirmQuit
+                ? "ctrl-c again to exit, any key to stay"
+                : busy
+                  ? "working\u2026  esc to cancel"
+                  : input + "\u258f"}
+            </Label>
           </Stack>
         )}
 
-        <Stack direction="row" padX={1}>
-          <Label dim>{`${shorten(cwd, 44)}  ·  ${model}  ·  ${state.usage.input}↑ ${state.usage.output}↓`}</Label>
-        </Stack>
+        <Row line={statusLine(state, cwd, model, term)} />
       </Stack>
     </>
   );
+}
+
+/** The one place a depth becomes columns. */
+function Row({ line }: { line: L }) {
+  const pad = " ".repeat(GUTTER + (line.depth ?? 0) * STEP);
+  // An empty Text renders no row at all, so a blank line is a single space.
+  if (!line.text) return <Label> </Label>;
+  if (line.md) return <Markdown line={line.text} indent={pad} color={line.color} dim={line.dim} />;
+  return (
+    <Label color={line.color} dim={line.dim} bold={line.bold}>
+      {pad + line.text}
+    </Label>
+  );
+}
+
+function statusLine(
+  state: ReturnType<typeof reduce>,
+  cwd: string,
+  model: string,
+  term: number,
+): L {
+  const usage = `${state.usage.input.toLocaleString()}\u2191 ${state.usage.output.toLocaleString()}\u2193`;
+  const room = Math.max(12, term - model.length - usage.length - 10);
+  return {
+    text: `${shortenPath(cwd, room)}  \u00b7  ${model}  \u00b7  ${usage}`,
+    dim: true,
+  };
+}
+
+/**
+ * Vertical rhythm.
+ *
+ * A blank row is the only separator this UI has, so it is spent where the
+ * reader changes what they are doing: starting a new exchange, or moving from
+ * the agent's work back to its answer. Consecutive tool calls are one
+ * continuous action and get none -- spacing them out is what turns a session
+ * into a scroll.
+ */
+function gapBefore(prev: ViewItem["kind"] | null, next: ViewItem["kind"]): number {
+  if (prev === null) return 0;
+  if (next === "user") return 1;
+  if (next === "assistant" && prev !== "assistant") return 1;
+  if (next === "compaction" || prev === "compaction") return 1;
+  return 0;
+}
+
+function renderRun(items: ViewItem[], term: number, startingAfter: ViewItem["kind"] | null): L[] {
+  const out: L[] = [];
+  let prev = startingAfter;
+  for (const item of items) {
+    for (let i = 0; i < gapBefore(prev, item.kind); i++) out.push(BLANK);
+    out.push(...renderItem(item, term));
+    prev = item.kind;
+  }
+  return out;
 }
 
 /**
@@ -121,79 +217,70 @@ function countSettled(items: ViewItem[]): number {
   return n;
 }
 
-type Line = { text: string; color?: Color; dim?: boolean; bold?: boolean; md?: boolean };
-
-/** Assistant prose gets markdown; tool output and chrome stay literal. */
-function Line({ line }: { line: Line }) {
-  if (line.md) return <Markdown line={line.text} color={line.color} dim={line.dim} />;
-  return (
-    <Label color={line.color} dim={line.dim} bold={line.bold}>
-      {line.text}
-    </Label>
-  );
-}
-
-function renderItem(i: ViewItem, width: number): Line[] {
-  const w = Math.max(20, width - 4);
+function renderItem(i: ViewItem, term: number): L[] {
   switch (i.kind) {
-    case "user":
-      return [{ text: "" }, ...wrap(i.text, w).map((t) => ({ text: `› ${t}`, bold: true }))];
+    case "user": {
+      const w = measureAt(DEPTH.said, term) - 2;
+      return wrap(i.text, w).map((t, n) => ({
+        text: (n === 0 ? "\u203a " : "  ") + t,
+        depth: DEPTH.said,
+        bold: true,
+      }));
+    }
+
     case "assistant":
-      return wrap(i.text, w).map((t) => ({ text: t, md: true }));
+      return wrap(i.text, measureAt(DEPTH.said, term)).map((t) => ({
+        text: t,
+        depth: DEPTH.said,
+        md: true,
+      }));
+
     case "reasoning":
-      return [{ text: i.done ? `  thought for ${i.chars} chars` : `  thinking… ${i.chars}`, dim: true }];
+      return [{
+        text: i.done ? `thought for ${i.chars.toLocaleString()} chars` : `thinking\u2026`,
+        depth: DEPTH.did,
+        dim: true,
+      }];
+
     case "tool": {
-      const mark = i.running ? "▸" : i.ok === false ? "✗" : "✓";
-      const head = `  ${mark} ${i.name}${i.args ? ` ${compact(i.args)}` : ""}`;
-      const out: Line[] = [{ text: truncate(head, w), color: i.ok === false ? "red" : "cyan" }];
+      const w = measureAt(DEPTH.did, term);
+      const mark = i.running ? "\u00b7" : i.ok === false ? "\u2717" : "\u2713";
+      const summary = i.args !== undefined ? summariseCall(i.name, i.args) : "";
+      const head = summary ? `${mark} ${i.name}  ${summary}` : `${mark} ${i.name}`;
+      const out: L[] = [{
+        text: clip(head, w),
+        depth: DEPTH.did,
+        color: i.ok === false ? "red" : undefined,
+      }];
+
       const body = i.running ? i.output : i.result;
-      if (body) {
-        const lines = body.split("\n").filter(Boolean);
-        const shown = i.running ? lines.slice(-6) : lines.slice(0, 8);
-        for (const l of shown) out.push({ text: `      ${truncate(l, w - 6)}`, dim: true });
-        if (!i.running && lines.length > 8) {
-          out.push({ text: `      … ${lines.length - 8} more lines`, dim: true });
+      if (body?.trim()) {
+        const dw = measureAt(DEPTH.detail, term);
+        const { lines, hidden } = outputLines(body);
+        // While running, the tail is what is happening; once finished, the
+        // head is what happened.
+        const shown = i.running ? lines.slice(-5) : lines;
+        for (const l of shown) out.push({ text: clip(l, dw), depth: DEPTH.detail, dim: true });
+        if (!i.running && hidden > 0) {
+          out.push({ text: `\u2026 ${hidden} more lines`, depth: DEPTH.detail, dim: true });
         }
       }
       return out;
     }
+
     case "error":
-      return [{ text: `  ✗ ${i.text}`, color: "red" }];
+      return wrap(i.text, measureAt(DEPTH.did, term) - 2).map((t, n) => ({
+        text: (n === 0 ? "\u2717 " : "  ") + t,
+        depth: DEPTH.did,
+        color: "red" as const,
+      }));
+
     case "compaction":
-      return [{ text: `  ⋯ compacted ${i.dropped} events — ${truncate(i.summary, w - 20)}`, color: "yellow" }];
+      return [{
+        text: clip(`\u22ef compacted ${i.dropped} events \u2014 ${i.summary}`, measureAt(DEPTH.did, term)),
+        depth: DEPTH.did,
+        dim: true,
+        color: "yellow" as const,
+      }];
   }
-}
-
-function wrap(text: string, width: number): string[] {
-  const out: string[] = [];
-  for (const para of text.split("\n")) {
-    if (para.length <= width) {
-      out.push(para);
-      continue;
-    }
-    let line = "";
-    for (const word of para.split(" ")) {
-      if ((line + word).length > width) {
-        out.push(line.trimEnd());
-        line = "";
-      }
-      line += word + " ";
-    }
-    if (line.trim()) out.push(line.trimEnd());
-  }
-  return out;
-}
-
-function truncate(s: string, n: number): string {
-  const flat = s.replace(/\n/g, " ");
-  return flat.length > n ? flat.slice(0, n - 1) + "…" : flat;
-}
-
-function compact(v: unknown): string {
-  const s = JSON.stringify(v);
-  return s.length > 60 ? s.slice(0, 59) + "…" : s;
-}
-
-function shorten(p: string, n: number): string {
-  return p.length > n ? "…" + p.slice(-(n - 1)) : p;
 }
