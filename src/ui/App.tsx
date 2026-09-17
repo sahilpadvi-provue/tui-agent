@@ -60,7 +60,12 @@ export function App({
   // The only connection to the runtime: a subscription. No calls in, ever.
   useEffect(() =>
     bus.on((e) => {
-      if (e.type === "local.invoked" && e.command === "clear" && e.ok) dispatch({ kind: "clear" });
+      if (e.type === "local.invoked" && e.command === "clear" && e.ok) {
+        printed.current = [];
+        consumed.current = 0;
+        lastKindRef.current = null;
+        dispatch({ kind: "clear" });
+      }
       dispatch(e);
     }),
   [bus]);
@@ -157,12 +162,52 @@ export function App({
     () => bannerLines({ version, model, backend, sandbox, cwd: shortenPath(cwd, term - 6) }),
     [version, model, backend, sandbox, cwd, term],
   );
-  const settled = useMemo(
-    () => [...banner, ...renderRun(state.items.slice(0, settledCount), term, null)],
-    [banner, settledCount, term, state.items],
-  );
+  /**
+   * Settled lines accumulate; they are never recomputed.
+   *
+   * Static prints what it has not printed before and tracks that by count, so
+   * the list it is given has to be append-only in the strictest sense: the
+   * same lines, in the same order, forever. Deriving it from the current
+   * terminal width broke that -- on resize every line was re-wrapped, the
+   * count changed, and Ink printed the difference as new content, repeating
+   * the transcript down the screen.
+   *
+   * Re-wrapping printed history is impossible anyway: those rows belong to the
+   * terminal's scrollback now, which is also why a real terminal does not
+   * reflow its own. New lines are wrapped at whatever width is current when
+   * they arrive.
+   */
+  const printed = useRef<L[]>([]);
+  const consumed = useRef(0);
+  const lastKindRef = useRef<ViewItem["kind"] | null>(null);
+
+  if (printed.current.length === 0) printed.current = [...banner];
+  if (settledCount > consumed.current) {
+    const fresh = state.items.slice(consumed.current, settledCount);
+    printed.current = [...printed.current, ...renderRun(fresh, term, lastKindRef.current)];
+    lastKindRef.current = state.items[settledCount - 1]?.kind ?? lastKindRef.current;
+    consumed.current = settledCount;
+  }
+  const settled = printed.current;
+
   const lastSettled = state.items[settledCount - 1]?.kind ?? null;
   const live = renderRun(state.items.slice(settledCount), term, lastSettled);
+
+  const where = branch ? `${basename(cwd)} ${branch}` : basename(cwd);
+  const usage = `${sandbox}  \u00b7  ${fmt(state.usage.input)}\u2191 ${fmt(state.usage.output)}\u2193`;
+
+  // What this session is about, taken from the request that started it -- far
+  // easier to recognise than an id. It is the only elastic field in the
+  // footer, so it takes whatever the fixed ones leave and disappears when
+  // that is nothing, rather than pushing the line past the terminal.
+  const title = useMemo(() => {
+    const first = state.items.find((i) => i.kind === "user");
+    if (!first || first.kind !== "user") return "";
+    const room = term - GUTTER * 2 - model.length - where.length - usage.length - 14;
+    if (room < 12) return "";
+    const words = first.text.trim().split(/\s+/).slice(0, 8).join(" ");
+    return words.length > room ? words.slice(0, room - 1) + "\u2026" : words;
+  }, [state.items, term, model, where, usage]);
 
   return (
     <>
@@ -244,8 +289,18 @@ export function App({
         )}
 
         <Stack direction="row" padX={GUTTER} align="between">
-          <Label dim>{`${basename(cwd)}${branch ? `  ${branch}` : ""}  ${model}`}</Label>
-          <Label dim>{`${sandbox}  \u00b7  ${fmt(state.usage.input)}\u2191 ${fmt(state.usage.output)}\u2193`}</Label>
+          <Label>
+            <Label color="yellow">{model}</Label>
+            <Label dim>{"  \u00b7  "}</Label>
+            <Label color="green">{where}</Label>
+            {title && (
+              <>
+                <Label dim>{"  \u00b7  "}</Label>
+                <Label color="cyan">{title}</Label>
+              </>
+            )}
+          </Label>
+          <Label dim>{usage}</Label>
         </Stack>
       </Stack>
     </>
@@ -352,24 +407,26 @@ function renderRun(items: ViewItem[], term: number, startingAfter: ViewItem["kin
 /**
  * How many leading items can never change again.
  *
- * A streaming message, a running tool and everything after them stay live.
- * Stopping at the first unsettled item keeps the settled list append-only,
- * which is what Static requires.
+ * The loop emits strictly sequentially: once a later item exists, the one
+ * before it is finished, whatever its own flags say. Only the last item can
+ * still be in progress.
+ *
+ * The previous rule stopped at the first item that did not look finished, so a
+ * single reasoning block that never received its completion event pinned
+ * every item after it in the live region. That region is redrawn whole on each
+ * frame, so it grew until it was taller than the terminal, at which point Ink
+ * could no longer erase what it had drawn and the last line repeated down the
+ * screen. Bounding the live region to one item removes the cause rather than
+ * the symptom.
  */
-function countSettled(items: ViewItem[]): number {
-  let n = 0;
-  for (const i of items) {
-    const done =
-      (i.kind === "assistant" && !i.streaming) ||
-      (i.kind === "tool" && !i.running) ||
-      i.kind === "user" ||
-      i.kind === "error" ||
-      i.kind === "compaction" ||
-      (i.kind === "reasoning" && i.done);
-    if (!done) break;
-    n++;
-  }
-  return n;
+export function countSettled(items: ViewItem[]): number {
+  if (items.length === 0) return 0;
+  const last = items[items.length - 1]!;
+  const lastIsLive =
+    (last.kind === "assistant" && last.streaming) ||
+    (last.kind === "tool" && last.running) ||
+    (last.kind === "reasoning" && !last.done);
+  return lastIsLive ? items.length - 1 : items.length;
 }
 
 function renderItem(i: ViewItem, term: number): L[] {

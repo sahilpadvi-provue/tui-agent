@@ -16,6 +16,8 @@ The terminal client. One subscriber to the event bus among several that could ex
 
 **The UI never calls the runtime.** It subscribes to the bus and receives `onSubmit` / `onCancel` / `onPermission` from `cli/`. It holds no reference to the loop, executor or model.
 
+**Only the last item can be live.** The loop emits strictly sequentially, so once a later item exists the one before it is finished, whatever its own flags say. An earlier rule stopped at the first item that did not *look* finished, which let one reasoning block without its completion event pin every item after it in the live region — and that region is redrawn whole each frame, so it grew past the terminal height and Ink could no longer erase what it had drawn. `scripts/resize-check.tsx` guards it.
+
 **Settled output is append-only.** Items that can no longer change go to `Settled` (Ink's `Static`) and are printed once, never redrawn. `countSettled` stops at the first live item so the list only ever grows. Re-keying or reordering it reprints the whole transcript — the documented way agent TUIs collapse.
 
 **The conversation still lives in `model.ts`, not the terminal.** Scrollback is where settled output is *displayed*; the event log remains the source of truth. Never read state back off the screen.
@@ -62,6 +64,9 @@ A terminal has one typeface, so hierarchy is colour, dim and bold — nothing el
 | Tool call | coloured mark · **bold verb** · plain argument |
 | Output, reasoning | dim, under a `└` |
 | Status, chrome | dim |
+| Footer | model yellow · repo and branch green · session title cyan |
+
+The session title is taken from the first request and is the only elastic field in the footer: it takes what the fixed fields leave and disappears when that is nothing, rather than pushing the line past the terminal.
 
 **Tool lines name the verb, not the tool** — `Ran npm test`, not `shell {"command":"npm test"}`. The tool's own name still identifies it in the log, where the distinction matters. Verbs live in `layout.ts`; a new tool without one falls back to its name.
 
