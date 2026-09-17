@@ -6,10 +6,11 @@
  * version that ships inside Ink is the one known to work against the React we
  * have.
  *
- * Two node types, because the UI uses two. `Stack` is only ever given a
- * direction and a horizontal pad, so there is no constraint solver here and no
- * Yoga -- the layout is "stack rows" and "concatenate spans", which is what a
- * line-shaped UI actually needs.
+ * Two node types, because the UI uses two. There is no constraint solver here
+ * and no Yoga -- the layout is "stack rows" and "concatenate spans", which is
+ * what a line-shaped UI actually needs. The two things that do not fit that
+ * shape, a horizontal rule and a row split left and right, both need the
+ * terminal's width and are therefore deferred to `paint`.
  *
  * `Static` has no counterpart on purpose. Ink needs it because a printed line
  * is gone; here the grid holds every row and the renderer simply declines to
@@ -36,6 +37,12 @@ export type BoxNode = {
   kind: "box";
   direction: "row" | "column";
   padX: number;
+  /** Draws a rule above and below. Only the "y" sides are ever asked for. */
+  border: boolean;
+  borderColor?: string;
+  borderDim?: boolean;
+  /** Pushes the last child to the right edge. */
+  between: boolean;
   children: Node[];
 };
 export type Node = TextNode | StringNode | BoxNode;
@@ -44,19 +51,40 @@ export type Root = {
   kind: "box";
   direction: "column";
   padX: 0;
+  border: false;
+  between: false;
   children: Node[];
   onRender?: () => void;
 };
 
 export function createRoot(): Root {
-  return { kind: "box", direction: "column", padX: 0, children: [], onRender: undefined };
+  return {
+    kind: "box", direction: "column", padX: 0, border: false, between: false,
+    children: [], onRender: undefined,
+  };
 }
+
+/**
+ * Where a row split left and right puts its gap.
+ *
+ * The width of that gap is the terminal's, which the tree does not know, so
+ * the span is emitted as a marker and `paint` gives it its size.
+ */
+export const FILL = "\u0000";
+
+/** A row, with the two things a row can be beyond a list of spans. */
+export type RenderLine = {
+  spans: Span[];
+  rule?: boolean;
+  color?: string;
+  dim?: boolean;
+};
 
 function spansOf(n: Node, inherited: Style): Span[] {
   if (n.kind === "string") {
     return n.text === "" ? [] : [{ text: n.text, ...inherited }];
   }
-  if (n.kind === "box") return rowsOf(n)[0] ?? [];
+  if (n.kind === "box") return rowsOf(n)[0]?.spans ?? [];
   const style: Style = { ...inherited, ...strip(n.style) };
   return n.children.flatMap((c) => spansOf(c, style));
 }
@@ -72,43 +100,67 @@ function strip(s: Style): Style {
   return out;
 }
 
-function rowsOf(n: Node): Span[][] {
-  if (n.kind === "string") return [[{ text: n.text }]];
-  if (n.kind === "text") return [spansOf(n, {})];
+function rowsOf(n: Node): RenderLine[] {
+  if (n.kind === "string") return [{ spans: [{ text: n.text }] }];
+  if (n.kind === "text") return [{ spans: spansOf(n, {}) }];
 
   const kids = n.children.map(rowsOf);
-  let rows: Span[][];
+  let rows: RenderLine[];
   if (n.direction === "row") {
     const height = kids.reduce((h, k) => Math.max(h, k.length), 0);
-    rows = Array.from({ length: height }, (_, i) => kids.flatMap((k) => k[i] ?? []));
+    rows = Array.from({ length: height }, (_, i) => ({
+      // A split row joins its children with the marker rather than butting
+      // them together; every other row is a plain concatenation.
+      spans: n.between
+        ? kids.flatMap((k, j) => (j === 0 ? [] : [{ text: FILL }]).concat(k[i]?.spans ?? []))
+        : kids.flatMap((k) => k[i]?.spans ?? []),
+    }));
   } else {
     rows = kids.flat();
   }
 
   if (n.padX > 0) {
     const pad: Span = { text: " ".repeat(n.padX) };
-    rows = rows.map((r) => [pad, ...r]);
+    rows = rows.map((r) => (r.rule ? r : { ...r, spans: [pad, ...r.spans] }));
+  }
+
+  // A rule spans the terminal, not the box, which is what the bordered Stack
+  // draws under Ink -- the box stretches to the full width there.
+  if (n.border) {
+    const rule: RenderLine = { spans: [], rule: true, color: n.borderColor, dim: n.borderDim };
+    rows = [rule, ...rows, rule];
   }
   return rows;
 }
 
 export function toLines(root: Root): Line[] {
-  return rowsOf(root).map((spans) => ({
-    text: spans.map((s) => s.text).join(""),
-    spans,
+  return rowsOf(root).map((row) => ({
+    text: row.spans.map((s) => s.text).join(""),
+    spans: row.spans,
+    rule: row.rule,
+    color: row.color as Line["color"],
+    dim: row.dim,
   }));
 }
 
 function nodeFor(type: string, props: Record<string, unknown>): Node {
   if (type === "tui-box") {
-    return {
-      kind: "box",
-      direction: props["direction"] === "row" ? "row" : "column",
-      padX: typeof props["padX"] === "number" ? props["padX"] : 0,
-      children: [],
-    };
+    return { ...boxFrom(props), children: [] };
   }
   return { kind: "text", style: styleFrom(props), children: [] };
+}
+
+function boxFrom(props: Record<string, unknown>): Omit<BoxNode, "children"> {
+  const box: Omit<BoxNode, "children"> = {
+    kind: "box",
+    direction: props["direction"] === "row" ? "row" : "column",
+    padX: typeof props["padX"] === "number" ? props["padX"] : 0,
+    border: props["border"] === true,
+    between: props["align"] === "between",
+  };
+  if (typeof props["borderColor"] === "string") box.borderColor = props["borderColor"];
+  if (typeof props["borderDim"] === "boolean") box.borderDim = props["borderDim"];
+  return box;
 }
 
 function styleFrom(props: Record<string, unknown>): Style {
@@ -170,10 +222,7 @@ export const reconciler = createReconciler({
 
   commitUpdate(node: Node, _type: string, _old: unknown, props: Record<string, unknown>) {
     if (node.kind === "text") node.style = styleFrom(props);
-    else if (node.kind === "box") {
-      node.direction = props["direction"] === "row" ? "row" : "column";
-      node.padX = typeof props["padX"] === "number" ? props["padX"] : 0;
-    }
+    else if (node.kind === "box") Object.assign(node, boxFrom(props));
   },
   commitTextUpdate(node: StringNode, _old: string, text: string) {
     node.text = text;

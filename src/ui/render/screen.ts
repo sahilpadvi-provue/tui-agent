@@ -14,6 +14,7 @@
 
 import type { Color } from "../primitives.tsx";
 import { GUTTER, STEP, type Line, type Span } from "../layout.ts";
+import { FILL } from "./host.ts";
 
 export type Cell = {
   readonly char: string;
@@ -98,7 +99,12 @@ function push(out: Cell[], text: string, sgr: string): void {
 function lineCells(line: Line, width: number): Cell[] {
   if (line.rule) {
     const out: Cell[] = [];
-    push(out, "─".repeat(Math.max(0, Math.min(width, line.width ?? width))), sgrFor({ dim: true }));
+    // A bordered Stack tints and dims its rule, so the style has to come from
+    // the line. Hand-built rules carry neither and stay dim, as before.
+    const style = line.color !== undefined || line.dim !== undefined
+      ? { color: line.color, dim: line.dim }
+      : { dim: true };
+    push(out, "─".repeat(Math.max(0, Math.min(width, line.width ?? width))), sgrFor(style));
     return out;
   }
 
@@ -114,7 +120,17 @@ function lineCells(line: Line, width: number): Cell[] {
   const spans: readonly Span[] = line.spans ?? [
     { text: line.text, color: line.color, dim: line.dim, bold: line.bold },
   ];
-  for (const s of spans) push(out, s.text, sgrFor({ ...s, bg: s.bg ?? bg }));
+
+  // A split row reserves whatever is left over for its gap, so the tail sits
+  // against the right edge. Computed here because this is where the width is.
+  const gap = spans.some((s) => s.text === FILL)
+    ? Math.max(1, width - out.length - spans.reduce((n, s) => n + (s.text === FILL ? 0 : s.text.length), 0))
+    : 0;
+
+  for (const s of spans) {
+    if (s.text === FILL) push(out, " ".repeat(gap), "");
+    else push(out, s.text, sgrFor({ ...s, bg: s.bg ?? bg }));
+  }
 
   if (line.band) {
     const fill = Math.max(0, (line.width ?? width) - out.length);

@@ -21,7 +21,15 @@ import {
 declare module "react" {
   namespace JSX {
     interface IntrinsicElements {
-      "tui-box": { children?: ReactNode; direction?: "row" | "column"; padX?: number };
+      "tui-box": {
+        children?: ReactNode;
+        direction?: "row" | "column";
+        padX?: number;
+        border?: boolean;
+        borderColor?: string;
+        borderDim?: boolean;
+        align?: "start" | "end" | "between";
+      };
       "tui-text": {
         children?: ReactNode;
         color?: string;
@@ -42,10 +50,31 @@ export type StackProps = {
   children?: ReactNode;
   direction?: "row" | "column";
   padX?: number;
+  /** A rule above and below. `borderSides` is accepted and ignored: the only
+   *  value the UI asks for is "y", which is what a rule already is. */
+  border?: boolean;
+  borderSides?: "all" | "y";
+  borderColor?: string;
+  borderDim?: boolean;
+  /** "between" pushes the last child to the right edge. */
+  align?: "start" | "end" | "between";
 };
 
-export function Stack({ children, direction = "column", padX }: StackProps) {
-  return <tui-box direction={direction} padX={padX}>{children}</tui-box>;
+export function Stack({
+  children, direction = "column", padX, border, borderColor, borderDim, align,
+}: StackProps) {
+  return (
+    <tui-box
+      direction={direction}
+      padX={padX}
+      border={border}
+      borderColor={borderColor}
+      borderDim={borderDim}
+      align={align}
+    >
+      {children}
+    </tui-box>
+  );
 }
 
 export type LabelProps = {
