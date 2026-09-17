@@ -39,6 +39,23 @@ export type LoopOptions = {
 
 const MAX_CONSECUTIVE_TOOL_FAILURES = 3;
 const MAX_CONSECUTIVE_DENIALS = 3;
+/**
+ * A turn that produces neither a tool call nor a word is a stall, not an
+ * answer. Small models reason themselves out of their output budget and
+ * return nothing; one retry is worth taking because the next sample often
+ * differs, but a second identical turn means it is stuck.
+ */
+const MAX_STALLED_TURNS = 2;
+
+/**
+ * Said to the model when it tries to finish having changed files without
+ * running anything. The system prompt already asks for this; asking is not
+ * enough, so the loop declines the ending and says why.
+ */
+const VERIFY_NUDGE =
+  "You have modified files but have not run anything since. Run the project's " +
+  "tests or the relevant command, read the result, and fix what it reports. " +
+  "Do not summarise until you have seen it pass.";
 
 /**
  * The agent loop.
@@ -72,6 +89,7 @@ export class AgentLoop {
     bus.emit({ sessionId: this.#sid(), type: "message.completed", id: mid, text: userText });
 
     let consecutiveFailures = 0;
+    let stalls = 0;
 
     for (let turn = 1; turn <= maxTurns; turn++) {
       if (this.#abort.signal.aborted) return this.#finish("cancelled");
@@ -135,8 +153,36 @@ export class AgentLoop {
         return this.#finish("failed");
       }
 
-      // No tool calls means the model is done talking.
-      if (pendingCalls.length === 0) return this.#finish("completed");
+      if (pendingCalls.length === 0) {
+        // Said nothing and did nothing. Reporting this as completion is how a
+        // failed run comes to look like a successful one.
+        if (!started || text.trim() === "") {
+          stalls++;
+          const reasoned = reasoningId ? " after reasoning without concluding" : "";
+          bus.emit({
+            sessionId: this.#sid(),
+            type: "error",
+            message: `model produced no output and no tool call${reasoned}`,
+            fatal: stalls >= MAX_STALLED_TURNS,
+          });
+          if (stalls >= MAX_STALLED_TURNS) return this.#finish("failed");
+          continue;
+        }
+        // Said something, asked for nothing: the model is done talking --
+        // unless it is signing off on work it never checked.
+        if (this.#unverified.size > 0 && !this.#nudged) {
+          this.#nudged = true;
+          bus.emit({
+            sessionId: this.#sid(),
+            type: "agent.status",
+            state: "working",
+            detail: `finishing without verifying ${this.#unverified.size} changed file(s)`,
+          });
+          continue;
+        }
+        return this.#finish("completed");
+      }
+      stalls = 0;
 
       for (const call of pendingCalls) {
         const ok = await this.#runTool(call);
@@ -246,9 +292,13 @@ export class AgentLoop {
       }
       for (const w of radius.writes) {
         if (tool.kind === "write") {
+          this.#unverified.add(w);
           bus.emit({ sessionId: this.#sid(), type: "file.changed", path: w, change: "modified" });
         }
       }
+      // Running something is how a change gets checked; what it proves is the
+      // model's problem, but until it runs, nothing has been observed.
+      if (tool.kind === "execute") this.#unverified.clear();
       bus.emit({ sessionId: this.#sid(), type: "tool.result", callId: call.id, ok: true, result });
       return true;
     } catch (err) {
@@ -299,6 +349,9 @@ export class AgentLoop {
 
   readonly #readFiles = new Set<string>();
   #checkpointed = false;
+  /** Files written since the last command ran. Cleared when one does. */
+  #unverified = new Set<string>();
+  #nudged = false;
   #maybeCheckpoint(label: string): void {
     if (!this.o.checkpoints || this.#checkpointed) return;
     const cwd = this.o.toolContext.opts.cwd;
@@ -309,8 +362,10 @@ export class AgentLoop {
 
   #messages(): ConvoMessage[] {
     const { messages } = project(this.#history);
-    if (!this.o.systemPrompt) return messages;
-    return [{ seq: -1, role: "system", text: this.o.systemPrompt }, ...messages];
+    const system = [this.o.systemPrompt, this.#nudged && this.#unverified.size > 0 ? VERIFY_NUDGE : ""]
+      .filter(Boolean)
+      .join("\n\n");
+    return system ? [{ seq: -1, role: "system", text: system }, ...messages] : messages;
   }
 
   #finish(state: RunState): RunState {

@@ -2,6 +2,7 @@ import { resolve } from "node:path";
 import type { ToolDef, ToolContext } from "./registry.ts";
 import { ToolArgumentError, str, optStr } from "./registry.ts";
 import { findMatch, contextSnippet } from "./fuzzy.ts";
+import { withSyntaxCheck } from "./syntax.ts";
 
 const MAX_OUTPUT = 30_000;
 
@@ -50,7 +51,7 @@ export const writeFileTool: ToolDef<{ path: string; content: string }> = {
   blastRadius: (a, ctx) => ({ writes: [resolve(ctx.opts.cwd, a.path)], network: false }),
   run: async (a, ctx) => {
     await ctx.exec.writeFile(a.path, a.content, ctx.opts);
-    return `wrote ${a.path} (${a.content.length} bytes)`;
+    return withSyntaxCheck(`wrote ${a.path} (${a.content.length} bytes)`, a.path, a.content);
   },
 };
 
@@ -99,9 +100,10 @@ export const editFileTool: ToolDef<{ path: string; old: string; new: string }> =
 
     const after = before.slice(0, m.start) + a.new + before.slice(m.end);
     await ctx.exec.writeFile(a.path, after, ctx.opts);
-    return m.kind === "whitespace"
+    const note = m.kind === "whitespace"
       ? `edited ${a.path} (matched ignoring whitespace differences)`
       : `edited ${a.path}`;
+    return withSyntaxCheck(note, a.path, after);
   },
 };
 
@@ -168,8 +170,13 @@ export const replaceLinesTool: ToolDef<{
     const end = Math.min(a.end_line, lines.length);
     const replacement = a.content === "" ? [] : a.content.split("\n");
     const after = [...lines.slice(0, a.start_line - 1), ...replacement, ...lines.slice(end)];
-    await ctx.exec.writeFile(a.path, after.join("\n"), ctx.opts);
-    return `replaced lines ${a.start_line}-${end} of ${a.path} (${end - a.start_line + 1} -> ${replacement.length} lines)`;
+    const text = after.join("\n");
+    await ctx.exec.writeFile(a.path, text, ctx.opts);
+    return withSyntaxCheck(
+      `replaced lines ${a.start_line}-${end} of ${a.path} (${end - a.start_line + 1} -> ${replacement.length} lines)`,
+      a.path,
+      text,
+    );
   },
 };
 
