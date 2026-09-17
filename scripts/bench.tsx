@@ -19,7 +19,7 @@ const stdin = Object.assign(new PassThrough(), { isTTY: true, setRawMode() {}, r
 
 const bus = new EventBus();
 const app = render(
-  <App bus={bus} cwd="/tmp/bench" model="bench" busy={true}
+  <App bus={bus} cwd="/tmp/bench" model="bench" version="0.1.0" backend="ollama" sandbox="seatbelt" branch="main" busy={true}
        onSubmit={() => {}} onCancel={() => {}} onPermission={() => {}} />,
   { stdout: stdout as any, stdin: stdin as any, patchConsole: false, incrementalRendering: true,
     maxFps: 60, onRender: () => { frames++; } },

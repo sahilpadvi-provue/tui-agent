@@ -34,16 +34,19 @@ export type StackProps = {
   grow?: number;
   shrink?: number;
   clip?: boolean;
-  /** Push children to the far end of the main axis (chat-style bottom align). */
-  align?: "start" | "end";
+  /** Push children along the main axis. "between" splits left and right. */
+  align?: "start" | "end" | "between";
   border?: boolean;
+  /** Which edges the border draws. Defaults to all four. */
+  borderSides?: "all" | "y";
   borderColor?: Color;
+  borderDim?: boolean;
   ref?: RefObject<DOMElement | null>;
 };
 
 export function Stack({
   children, direction = "column", gap, padX, padY, width, height,
-  grow, shrink, clip, align, border, borderColor, ref,
+  grow, shrink, clip, align, border, borderSides = "all", borderColor, borderDim, ref,
 }: StackProps) {
   return (
     <InkBox
@@ -56,10 +59,15 @@ export function Stack({
       height={height}
       flexGrow={grow}
       flexShrink={shrink}
-      justifyContent={align === "end" ? "flex-end" : undefined}
+      justifyContent={
+        align === "end" ? "flex-end" : align === "between" ? "space-between" : undefined
+      }
       overflowY={clip ? "hidden" : undefined}
       borderStyle={border ? "round" : undefined}
+      borderLeft={border && borderSides === "all"}
+      borderRight={border && borderSides === "all"}
       borderColor={borderColor}
+      borderDimColor={borderDim}
     >
       {children}
     </InkBox>

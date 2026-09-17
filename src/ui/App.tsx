@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useReducer, useState } from "react";
 import { Stack, Label, Settled, useKeys, useStdout, useApp, type Color } from "./primitives.tsx";
 import { reduce, initialState, type ViewItem } from "./model.ts";
 import { Markdown } from "./markdown.tsx";
+import { bannerLines } from "./banner.ts";
 import {
   BLANK, DEPTH, GUTTER, STEP,
   clip, measureAt, outputLines, shortenPath, summariseCall, wrap,
@@ -15,6 +16,13 @@ export type AppProps = {
   bus: EventBus;
   cwd: string;
   model: string;
+  version: string;
+  /** Where the model runs. Shown once, on launch. */
+  backend: string;
+  /** How the session is contained, in the words the executor reports. */
+  sandbox: string;
+  /** Current git branch, when the workspace is a repo. */
+  branch?: string;
   onSubmit: (text: string) => void;
   onCancel: () => void;
   onPermission: (d: PermissionDecision) => void;
@@ -30,7 +38,10 @@ export type AppProps = {
  * -- redraws. The app therefore occupies exactly as many rows as it needs,
  * and there is no empty band anywhere.
  */
-export function App({ bus, cwd, model, onSubmit, onCancel, onPermission, busy }: AppProps) {
+export function App({
+  bus, cwd, model, version, backend, sandbox, branch,
+  onSubmit, onCancel, onPermission, busy,
+}: AppProps) {
   const [state, dispatch] = useReducer(reduce, initialState);
   const [input, setInput] = useState("");
   const [confirmQuit, setConfirmQuit] = useState(false);
@@ -90,15 +101,20 @@ export function App({ bus, cwd, model, onSubmit, onCancel, onPermission, busy }:
   // append-only for Static, which holds because a gap depends only on an item
   // and the one before it.
   const settledCount = countSettled(state.items);
+  const banner = useMemo(
+    () => bannerLines({ version, model, backend, sandbox, cwd: shortenPath(cwd, term - 6) }),
+    [version, model, backend, sandbox, cwd, term],
+  );
   const settled = useMemo(
-    () => renderRun(state.items.slice(0, settledCount), term, null),
-    [settledCount, term, state.items],
+    () => [...banner, ...renderRun(state.items.slice(0, settledCount), term, null)],
+    [banner, settledCount, term, state.items],
   );
   const lastSettled = state.items[settledCount - 1]?.kind ?? null;
   const live = renderRun(state.items.slice(settledCount), term, lastSettled);
 
   return (
     <>
+
       <Settled items={settled} render={(line, i) => <Row key={i} line={line} />} />
 
       <Stack direction="column">
@@ -111,7 +127,7 @@ export function App({ bus, cwd, model, onSubmit, onCancel, onPermission, busy }:
         )}
 
         {state.pending ? (
-          <Stack direction="column" padX={1} border borderColor="yellow">
+          <Stack direction="column" padX={GUTTER} border borderSides="y" borderColor="yellow">
             <Label bold color="yellow">{`approve ${state.pending.tool}`}</Label>
             {radiusLines(state.pending.radius).map((l, i) => (
               <Label key={i} dim>{clip(l, term - 4)}</Label>
@@ -119,7 +135,14 @@ export function App({ bus, cwd, model, onSubmit, onCancel, onPermission, busy }:
             <Label dim>{"[y] once    [a] session    [n] deny"}</Label>
           </Stack>
         ) : (
-          <Stack direction="row" padX={1} border borderColor={confirmQuit ? "yellow" : busy ? "gray" : "cyan"}>
+          <Stack
+            direction="row"
+            padX={GUTTER}
+            border
+            borderSides="y"
+            borderDim={!confirmQuit && !busy}
+            borderColor={confirmQuit ? "yellow" : busy ? "gray" : undefined}
+          >
             <Label color={confirmQuit ? "yellow" : busy ? "gray" : "cyan"}>
               {confirmQuit ? "! " : busy ? "\u00b7 " : "\u203a "}
             </Label>
@@ -133,7 +156,10 @@ export function App({ bus, cwd, model, onSubmit, onCancel, onPermission, busy }:
           </Stack>
         )}
 
-        <Row line={statusLine(state, cwd, model, term)} />
+        <Stack direction="row" padX={GUTTER} align="between">
+          <Label dim>{`${basename(cwd)}${branch ? `  ${branch}` : ""}  ${model}`}</Label>
+          <Label dim>{`${sandbox}  \u00b7  ${fmt(state.usage.input)}\u2191 ${fmt(state.usage.output)}\u2193`}</Label>
+        </Stack>
       </Stack>
     </>
   );
@@ -152,18 +178,13 @@ function Row({ line }: { line: L }) {
   );
 }
 
-function statusLine(
-  state: ReturnType<typeof reduce>,
-  cwd: string,
-  model: string,
-  term: number,
-): L {
-  const usage = `${state.usage.input.toLocaleString()}\u2191 ${state.usage.output.toLocaleString()}\u2193`;
-  const room = Math.max(12, term - model.length - usage.length - 10);
-  return {
-    text: `${shortenPath(cwd, room)}  \u00b7  ${model}  \u00b7  ${usage}`,
-    dim: true,
-  };
+/** Thousands separator without the noise of full locale formatting. */
+function fmt(n: number): string {
+  return n >= 10_000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+}
+
+function basename(p: string): string {
+  return p.split("/").filter(Boolean).pop() ?? p;
 }
 
 /**

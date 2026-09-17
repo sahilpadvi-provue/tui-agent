@@ -20,6 +20,15 @@ import { SYSTEM_PROMPT } from "../core/prompt.ts";
 import { mount } from "../ui/primitives.tsx";
 import { App } from "../ui/App.tsx";
 import type { PermissionDecision } from "../core/events.ts";
+import { spawnSync } from "node:child_process";
+import pkg from "../../package.json" with { type: "json" };
+
+/** Empty when the workspace is not a repo, which is a normal way to run. */
+function currentBranch(dir: string): string | undefined {
+  const r = spawnSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: dir, encoding: "utf8" });
+  const name = r.stdout?.trim();
+  return r.status === 0 && name && name !== "HEAD" ? name : undefined;
+}
 
 const cwd = process.cwd();
 const sessionId = randomUUID().slice(0, 8);
@@ -30,7 +39,8 @@ const model = new OllamaClient(process.env.MODEL ?? "qwen3:8b");
 log.writeMeta({ sessionId, startedAt: new Date().toISOString(), cwd, model: model.name });
 bus.on((e) => log.append(e));
 
-const exec = new LocalExecutor(cwd);
+const exec = new LocalExecutor(cwd, { sandbox: true, allowNetwork: true });
+const branch = currentBranch(cwd);
 const tools = new ToolRegistry();
 for (const t of builtinTools) tools.register(t);
 
@@ -53,6 +63,10 @@ const instance = mount(
     bus={bus}
     cwd={cwd}
     model={model.name}
+    version={pkg.version}
+    backend="ollama"
+    sandbox={exec.describeSandbox()}
+    branch={branch}
     busy={busy}
     onSubmit={(text) => { void run(text); }}
     onCancel={() => loop.cancel()}
@@ -66,6 +80,10 @@ function rerender() {
       bus={bus}
       cwd={cwd}
       model={model.name}
+      version={pkg.version}
+      backend="ollama"
+      sandbox={exec.describeSandbox()}
+      branch={branch}
       busy={busy}
       onSubmit={(text) => { void run(text); }}
       onCancel={() => loop.cancel()}

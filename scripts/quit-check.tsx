@@ -11,7 +11,7 @@ const stdout = Object.assign(new Writable({ write(c, _e, cb) { buf += String(c);
 const stdin = Object.assign(new PassThrough(), { isTTY: true, setRawMode() {}, ref() {}, unref() {} });
 
 const app = render(
-  <App bus={new EventBus()} cwd="/tmp" model="m" busy={false}
+  <App bus={new EventBus()} cwd="/tmp" model="m" version="0.1.0" backend="ollama" sandbox="seatbelt" branch="main" busy={false}
        onSubmit={() => {}} onCancel={() => {}} onPermission={() => {}} />,
   { stdout: stdout as any, stdin: stdin as any, patchConsole: false, exitOnCtrlC: false },
 );
