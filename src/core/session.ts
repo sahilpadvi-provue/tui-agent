@@ -48,9 +48,16 @@ export function listSessions(dir = ".sessions"): SessionSummary[] {
 export function resume(
   sessionId: string,
   dir = ".sessions",
+  workspace = process.cwd(),
 ): { bus: EventBus; log: EventLog; meta: SessionMeta; history: AgentEvent[] } {
   const log = new EventLog(dir, sessionId);
   const { meta, events } = log.read();
+  if (meta.cwd !== workspace) {
+    // The log records tool results describing files this tree may not have.
+    throw new Error(
+      `session ${sessionId} was recorded in ${meta.cwd}, not ${workspace}. Resume it there.`,
+    );
+  }
   const bus = new EventBus();
   bus.resumeFrom((events.at(-1)?.seq ?? -1) + 1);
   return { bus, log, meta, history: events };

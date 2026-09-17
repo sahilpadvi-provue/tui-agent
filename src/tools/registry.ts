@@ -35,6 +35,9 @@ export class ToolRegistry {
   #tools = new Map<string, ToolDef>();
 
   register(tool: ToolDef): void {
+    if (this.#tools.has(tool.name)) {
+      throw new Error(`tool already registered: ${tool.name}`);
+    }
     this.#tools.set(tool.name, tool);
   }
 

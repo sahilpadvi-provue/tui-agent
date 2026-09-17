@@ -27,11 +27,18 @@ export type LoopOptions = {
   readonly maxTurns?: number;
   readonly systemPrompt?: string;
   readonly budget?: BudgetOptions;
+  /**
+   * Consecutive denials tolerated before the run stops. Without it, a model
+   * that keeps proposing an action the operator will not allow pins them in
+   * an approval loop.
+   */
+  readonly maxConsecutiveDenials?: number;
   /** Snapshot the working tree before the first write of a session. */
   readonly checkpoints?: boolean;
 };
 
 const MAX_CONSECUTIVE_TOOL_FAILURES = 3;
+const MAX_CONSECUTIVE_DENIALS = 3;
 
 /**
  * The agent loop.
@@ -45,6 +52,7 @@ const MAX_CONSECUTIVE_TOOL_FAILURES = 3;
 export class AgentLoop {
   #history: AgentEvent[];
   #abort = new AbortController();
+  #consecutiveDenials = 0;
 
   constructor(private readonly o: LoopOptions) {
     this.#history = [...(o.history ?? [])];
@@ -193,8 +201,20 @@ export class AgentLoop {
       policy.record(tool.name, decision);
 
       if (decision.kind === "deny") {
+        this.#consecutiveDenials++;
+        const limit = this.o.maxConsecutiveDenials ?? MAX_CONSECUTIVE_DENIALS;
+        if (this.#consecutiveDenials >= limit) {
+          bus.emit({
+            sessionId: this.#sid(),
+            type: "error",
+            message: `${this.#consecutiveDenials} consecutive denials; stopping rather than asking again`,
+            fatal: true,
+          });
+          this.#abort.abort();
+        }
         return this.#toolError(call.id, `user denied: ${decision.reason}`);
       }
+      this.#consecutiveDenials = 0;
     }
 
     if (tool.kind !== "read") {

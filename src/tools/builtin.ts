@@ -20,6 +20,7 @@ export const readFileTool: ToolDef<{ path: string }> = {
   kind: "read",
   parameters: {
     type: "object",
+    additionalProperties: false,
     properties: { path: { type: "string", description: "Path relative to the workspace root" } },
     required: ["path"],
   },
@@ -38,6 +39,7 @@ export const writeFileTool: ToolDef<{ path: string; content: string }> = {
   kind: "write",
   parameters: {
     type: "object",
+    additionalProperties: false,
     properties: {
       path: { type: "string" },
       content: { type: "string" },
@@ -59,6 +61,7 @@ export const editFileTool: ToolDef<{ path: string; old: string; new: string }> =
   kind: "write",
   parameters: {
     type: "object",
+    additionalProperties: false,
     properties: {
       path: { type: "string" },
       old: { type: "string", description: "Exact text to replace" },
@@ -124,6 +127,7 @@ export const replaceLinesTool: ToolDef<{
   kind: "write",
   parameters: {
     type: "object",
+    additionalProperties: false,
     properties: {
       path: { type: "string" },
       start_line: { type: "number", description: "First line to replace (1-based, inclusive)" },
@@ -175,6 +179,7 @@ export const listFilesTool: ToolDef<{ path?: string }> = {
   kind: "read",
   parameters: {
     type: "object",
+    additionalProperties: false,
     properties: { path: { type: "string", description: "Defaults to the workspace root" } },
   },
   validate: (raw) => ({ path: optStr(raw, "path") ?? "." }),
@@ -188,6 +193,7 @@ export const searchTool: ToolDef<{ pattern: string; path?: string }> = {
   kind: "read",
   parameters: {
     type: "object",
+    additionalProperties: false,
     properties: {
       pattern: { type: "string" },
       path: { type: "string", description: "Directory to search; defaults to workspace root" },
@@ -217,6 +223,7 @@ export const shellTool: ToolDef<{ command: string }> = {
   kind: "execute",
   parameters: {
     type: "object",
+    additionalProperties: false,
     properties: { command: { type: "string" } },
     required: ["command"],
   },
