@@ -14,6 +14,7 @@
 
 import type { Color } from "../primitives.tsx";
 import { GUTTER, STEP, type Line, type Span } from "../layout.ts";
+import { blockStyle, segments } from "../markdown.tsx";
 import { FILL } from "./host.ts";
 
 export type Cell = {
@@ -147,6 +148,25 @@ function lineCells(line: Line, width: number): Cell[] {
   // padding it again would shift every row by a gutter.
   const pad = line.depth === undefined ? "" : " ".repeat(GUTTER + line.depth * STEP);
   const out: Cell[] = [];
+
+  // Inline markdown, through the same two functions the Ink path uses, so a
+  // model's `**bold**` cannot render as emphasis in one renderer and as raw
+  // asterisks in the other.
+  if (line.md) {
+    const block = blockStyle(line.text);
+    const base = { color: line.color ?? block.color, dim: line.dim, bold: block.bold };
+    push(out, pad, sgrFor(base));
+    for (const seg of segments(block.text)) {
+      push(out, seg.text, sgrFor({
+        ...base,
+        bold: seg.bold ?? base.bold,
+        italic: seg.italic,
+        color: seg.code ? "cyan" : base.color,
+      }));
+    }
+    return out;
+  }
+
   const bg = line.band ? BAND : undefined;
 
   push(out, pad, sgrFor({ bg }));
