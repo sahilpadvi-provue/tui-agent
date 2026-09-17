@@ -209,6 +209,20 @@ export function App({
     return words.length > room ? words.slice(0, room - 1) + "\u2026" : words;
   }, [state.items, term, model, where, usage]);
 
+  /**
+   * The commands matching what has been typed so far.
+   *
+   * Shown as a list with what each one does, rather than a row of bare names:
+   * the names alone only help someone who already knows them, which is not who
+   * needs the hint. Capped, because this sits in the live frame and that is
+   * redrawn whole on every keystroke.
+   */
+  const matching = input.startsWith("/")
+    ? COMMANDS.filter((c) => c.name.startsWith(input.slice(1).split(" ")[0] ?? ""))
+    : [];
+  const palette = matching.slice(0, PALETTE_ROWS);
+  const moreCommands = matching.length - palette.length;
+
   return (
     <>
 
@@ -269,21 +283,28 @@ export function App({
                 {/* The hint is not text you typed, so it must not look like
                     it. An explicit grey reads as absent in a way SGR dim does
                     not -- dim white is still close to white on many themes. */}
-                {input.startsWith("/") && (
-                  <Label dim>
-                    {"   " + COMMANDS.map((c) => c.name)
-                      .filter((n) => n.startsWith(input.slice(1).split(" ")[0] ?? ""))
-                      .slice(0, 6)
-                      .map((n) => `/${n}`)
-                      .join("  ")}
-                  </Label>
-                )}
                 {input === "" && (
                   <Label color="gray">
                     {busy ? " type to queue the next instruction" : " describe a change, or ask about the code"}
                   </Label>
                 )}
               </Label>
+            )}
+          </Stack>
+        )}
+
+        {palette.length > 0 && (
+          <Stack direction="column" padX={GUTTER}>
+            {palette.map((c) => (
+              <Label key={c.name}>
+                <Label color="cyan">
+                  {`/${c.name}${c.takes ? ` ${c.takes}` : ""}`.padEnd(NAME_COLUMN)}
+                </Label>
+                <Label dim>{clip(c.summary, term - GUTTER - NAME_COLUMN - 2)}</Label>
+              </Label>
+            ))}
+            {moreCommands > 0 && (
+              <Label dim>{`${" ".repeat(NAME_COLUMN)}\u2026 ${moreCommands} more`}</Label>
             )}
           </Stack>
         )}
@@ -309,6 +330,12 @@ export function App({
 
 /** One step off the terminal's own background: enough to read as a field. */
 const BAND = "#2a2a2a";
+
+/** Width of the command column, so the descriptions line up. */
+const NAME_COLUMN = 22;
+
+/** The live frame is redrawn on every keystroke, so the list is capped. */
+const PALETTE_ROWS = 8;
 
 /** The one place a depth becomes columns. */
 function Row({ line }: { line: L }) {

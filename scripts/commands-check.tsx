@@ -95,4 +95,51 @@ const plain = buf.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "");
 check("a command is rendered in the transcript", plain.includes("/checkpoints"), plain.slice(-120));
 check("its output is rendered", plain.includes("before shell"));
 
+// ---------------------------------------------------------------------------
+// The palette: typing a slash has to show what the commands are, not just
+// their names. A list of bare names only helps someone who already knows them.
+// ---------------------------------------------------------------------------
+
+async function afterTyping(typed: string, width = 100) {
+  let out = "";
+  const so = Object.assign(new Writable({ write(c, _e, cb) { out += String(c); cb(); return true; } }),
+    { columns: width, rows: 30, isTTY: true });
+  const si = Object.assign(new PassThrough(), { isTTY: true, setRawMode() {}, ref() {}, unref() {} });
+  const b = new EventBus();
+  const a = render(
+    <App bus={b} cwd={ws} model="m" version="0" backend="b" sandbox="off" busy={false}
+         onSubmit={() => {}} onCommand={() => {}} onCancel={() => {}} onPermission={() => {}} />,
+    { stdout: so as any, stdin: si as any, patchConsole: false },
+  );
+  await new Promise((r) => setTimeout(r, 90));
+  for (const ch of typed) { si.write(ch); await new Promise((r) => setTimeout(r, 20)); }
+  await new Promise((r) => setTimeout(r, 160));
+  a.unmount();
+  await a.waitUntilExit();
+  const frames = out.split("\x1b[?2026h");
+  return (frames[frames.length - 1] ?? "").replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "");
+}
+
+const all = await afterTyping("/");
+check("a slash lists every command", COMMANDS.every((c) => all.includes(`/${c.name}`)),
+  COMMANDS.filter((c) => !all.includes(`/${c.name}`)).map((c) => c.name).join(", "));
+check("the list explains what each one does", all.includes("what compaction hid"));
+
+const filtered = await afterTyping("/c");
+check("typing filters the list", filtered.includes("/context") && filtered.includes("/clear"));
+check("non-matching commands are dropped", !filtered.includes("/help") && !filtered.includes("/sessions"),
+  "help or sessions still listed");
+
+// Only the palette's own rows. The composer's rules are the width of the
+// terminal by design -- that is the accepted leak documented in the README,
+// and not something this check is about.
+const narrow = await afterTyping("/", 64);
+const paletteRows = narrow.split("\n").filter((l) => /^\s+\/[a-z]/.test(l));
+const widest = Math.max(0, ...paletteRows.map((l) => [...l].length));
+check("the list adds no full-width lines of its own", paletteRows.length > 0 && widest < 64,
+  `${paletteRows.length} rows, widest ${widest} of 64`);
+
+const none = await afterTyping("hello");
+check("ordinary text shows no list", !none.includes("list these commands"));
+
 process.exit(failures ? 1 : 0);

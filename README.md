@@ -58,7 +58,7 @@ means fewer chances to leak.
 
 ## Commands
 
-Typed into the composer with a leading `/`. They are the user acting on the
+Typing `/` lists them with what each one does, filtered as you type. Typed into the composer with a leading `/`. They are the user acting on the
 session, so they run immediately even mid-turn, are recorded in the log for the
 audit trail, and are skipped by the conversation projection — `/help` is not
 something the agent said.
