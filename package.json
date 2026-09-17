@@ -11,6 +11,7 @@
     "render:demo": "bun run scripts/render-demo.tsx",
     "render:check": "bun run scripts/render-check.tsx",
     "host:check": "bun run scripts/host-smoke.tsx",
+    "colour:check": "bun run scripts/colour-check.ts",
     "app:check": "bun --preload ./scripts/cells-preload.ts scripts/app-cells-smoke.tsx",
     "tui:cells": "bun --preload ./scripts/cells-preload.ts src/cli/tui.tsx",
     "sessions": "bun run src/cli/sessions.ts",

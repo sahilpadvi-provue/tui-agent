@@ -53,6 +53,40 @@ function rgb(hex: string): [number, number, number] | null {
 }
 
 /**
+ * Truecolor is not something to assume.
+ *
+ * A terminal that does not understand `48;2;r;g;b` does not ignore it -- it
+ * reads the parameters as separate codes, and `42` among them is "background
+ * green". That is why a #2a2a2a band came out bright green and the shimmer's
+ * greys came out violet. Ink never hit this because chalk downgrades for it.
+ *
+ * COLORTERM is what advertises the support, so it is what decides.
+ */
+const TRUECOLOR = /truecolor|24bit/i.test(process.env["COLORTERM"] ?? "");
+
+/** The nearest xterm-256 index: the greyscale ramp, else the 6x6x6 cube. */
+function to256(r: number, g: number, b: number): number {
+  if (r === g && g === b) {
+    if (r < 8) return 16;
+    if (r > 248) return 231;
+    return Math.round(((r - 8) / 247) * 24) + 232;
+  }
+  return (
+    16 +
+    36 * Math.round((r / 255) * 5) +
+    6 * Math.round((g / 255) * 5) +
+    Math.round((b / 255) * 5)
+  );
+}
+
+/** `38` for foreground, `48` for background. */
+function extended(layer: 38 | 48, c: [number, number, number]): string {
+  return TRUECOLOR
+    ? `${layer};2;${c[0]};${c[1]};${c[2]}`
+    : `${layer};5;${to256(c[0], c[1], c[2])}`;
+}
+
+/**
  * One prefix per cell rather than runs.
  *
  * Emitting a reset before every change costs bytes a run-length pass would
@@ -75,12 +109,12 @@ function sgrFor(style: {
     if (named !== undefined) codes.push(named);
     else {
       const c = rgb(style.color);
-      if (c) codes.push(`38;2;${c[0]};${c[1]};${c[2]}`);
+      if (c) codes.push(extended(38, c));
     }
   }
   if (style.bg) {
     const c = rgb(style.bg);
-    if (c) codes.push(`48;2;${c[0]};${c[1]};${c[2]}`);
+    if (c) codes.push(extended(48, c));
   }
   return codes.length === 0 ? "" : `\x1b[${codes.join(";")}m`;
 }
