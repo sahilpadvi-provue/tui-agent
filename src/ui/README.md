@@ -98,7 +98,11 @@ The prompt carries a cursor index, not just a string. Everything else follows fr
 
 **Pasted text is normalized to `\n` on the way in**, on both the paste channel and the typed one, because a terminal that ignores the bracketed-paste request still delivers a paste through `useInput` in chunks. Unnormalized, a pasted function renders as one run-on line and reaches the model full of `\r`.
 
-**A long paste folds in the middle.** `composerRows` keeps the first line, the line the cursor is on, and the last, and collapses the rest to a count — so sixty pasted lines are three rows, not sixty, in a region that is redrawn on every keystroke. Keeping the cursor's line is what lets every movement binding keep working inside a fold. `input` still holds the whole paste; the fold is display only.
+**A pasted block is one character.** It is drawn as `[Pasted text #1 +13 lines]`, but in the prompt string it occupies a single private-use codepoint, and `pastes` maps that character to what was pasted. Backspace deletes it whole, the arrows step over it, and `ctrl-w` takes it as a word — none of which needs a rule, because there is no multi-character token to leave half of. Expansion happens on the way out and nowhere else, so history keeps the chip and a recalled line still reads as one line.
+
+The alternative was to keep the label itself in the string and map label to payload. That looks identical and is worse: 25 characters pretending to be one object, defended by a special case in every editing binding, and the cost of missing one is silent, because a broken label stops matching its payload and the prompt submits the label text instead of the code. `scripts/keys-check.tsx` demonstrates the difference. Lengthening the mark to two characters fails eight of its checks, and the informative one is the payload: backspace takes only the first character, the second is stranded in the prompt, and what reaches the model is that stray character rather than the paste.
+
+This is also why the composer is a single row again. A paste can no longer put a newline in the prompt, and there is no other way to enter one, so the multi-row folding that preceded this is gone.
 
 **There is no `ctrl-l`.** Clearing the screen would destroy the settled transcript permanently: it lives in the terminal's real scrollback, and `Static` will not reprint it. `/clear` starts a fresh conversation, which is the thing people actually want.
 

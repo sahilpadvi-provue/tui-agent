@@ -34,44 +34,65 @@ export function normalizeNewlines(text: string): string {
   return text.replace(/\r\n?/g, "\n");
 }
 
-export type ComposerRow =
-  | { kind: "text"; text: string; cursor?: number }
-  | { kind: "hidden"; count: number };
+/**
+ * A pasted block is one character.
+ *
+ * It is drawn as `[Pasted text #1 +13 lines]`, but in the prompt string it
+ * occupies a single private-use codepoint. That is the whole trick: backspace
+ * deletes it whole, the arrows step over it and ctrl-w takes it as a word,
+ * all without a rule anywhere, because there is no multi-character token to
+ * leave half of. A label kept in the string instead would have to be defended
+ * by every editing binding, and the cost of missing one is silent -- a broken
+ * label stops matching its payload and the prompt submits the label text.
+ */
+const PASTE_BASE = 0xe000;
+const PASTE_LIMIT = 0x1000;
+
+export function pasteMark(id: number): string {
+  return String.fromCodePoint(PASTE_BASE + (id % PASTE_LIMIT));
+}
+
+export function isPasteMark(ch: string): boolean {
+  const code = ch.codePointAt(0);
+  return code !== undefined && code >= PASTE_BASE && code < PASTE_BASE + PASTE_LIMIT;
+}
+
+/** Which paste this is, counting from one, for the label. */
+export function pasteId(mark: string): number {
+  return (mark.codePointAt(0) ?? PASTE_BASE) - PASTE_BASE + 1;
+}
+
+/** The prompt as it goes to the model: every mark back to what was pasted. */
+export function expandPastes(text: string, pastes: ReadonlyMap<string, string>): string {
+  return [...text].map((ch) => pastes.get(ch) ?? ch).join("");
+}
+
+export type Piece = { text: string; paste: boolean; cursor: boolean };
 
 /**
- * The prompt, as rows, with the middle of a long paste folded away.
- *
- * Sixty pasted lines are sixty rows of a region that is redrawn on every
- * keystroke, and the useful part of a paste is almost never its middle: it is
- * the first line, to recognise what was pasted, and whatever is being typed
- * now. So everything else collapses to a count.
- *
- * The line holding the cursor is always kept, which is what lets every
- * movement binding keep working inside a folded paste. `max` bounds the
- * unfolded case; a folded one is five rows whatever the paste's size.
+ * The prompt as it is drawn: runs of ordinary text, the pasted blocks as their
+ * labels, and whichever one the cursor is sitting on.
  */
-export function composerRows(text: string, cursor: number, max: number): ComposerRow[] {
-  const lines = text.split("\n");
+export function composerPieces(text: string, cursor: number, label: (mark: string) => string): Piece[] {
+  const pieces: Piece[] = [];
+  let run = "";
+  const flush = () => {
+    if (run) pieces.push({ text: run, paste: false, cursor: false });
+    run = "";
+  };
 
-  let offset = Math.max(0, Math.min(text.length, cursor));
-  let line = 0;
-  while (line < lines.length - 1 && offset > lines[line]!.length) {
-    offset -= lines[line]!.length + 1;
-    line++;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]!;
+    if (isPasteMark(ch)) {
+      flush();
+      pieces.push({ text: label(ch), paste: true, cursor: i === cursor });
+    } else if (i === cursor) {
+      flush();
+      pieces.push({ text: ch, paste: false, cursor: true });
+    } else {
+      run += ch;
+    }
   }
-
-  const row = (i: number): ComposerRow =>
-    i === line ? { kind: "text", text: lines[i]!, cursor: offset } : { kind: "text", text: lines[i]! };
-
-  if (lines.length <= max) return lines.map((_, i) => row(i));
-
-  const kept = [...new Set([0, line, lines.length - 1])].sort((a, b) => a - b);
-  const rows: ComposerRow[] = [];
-  let prev = -1;
-  for (const i of kept) {
-    if (i - prev > 1) rows.push({ kind: "hidden", count: i - prev - 1 });
-    rows.push(row(i));
-    prev = i;
-  }
-  return rows;
+  flush();
+  return pieces;
 }

@@ -9,7 +9,10 @@ import {
   summariseCall, verbFor, wrap,
   type Line as L,
 } from "./layout.ts";
-import { composerRows, normalizeNewlines, wordLeft, wordRight } from "./editor.ts";
+import {
+  composerPieces, expandPastes, normalizeNewlines, pasteId, pasteMark,
+  wordLeft, wordRight,
+} from "./editor.ts";
 import { SHORTCUTS } from "./shortcuts.ts";
 import { radiusLines } from "../permissions/policy.ts";
 import { COMMANDS, isCommand } from "../commands/registry.ts";
@@ -61,6 +64,10 @@ export function App({
   const [draft, setDraft] = useState("");
   const [dismissed, setDismissed] = useState(false);
   const [helping, setHelping] = useState(false);
+  // Pasted blocks, by the character standing in for them. A ref, not state:
+  // every paste also moves the prompt, which is what redraws.
+  const pastes = useRef(new Map<string, string>());
+  const pasted = useRef(0);
   const startedAt = useRef<number | null>(null);
   const wasBusy = useRef(false);
   const { stdout } = useStdout();
@@ -150,12 +157,21 @@ export function App({
     setDraft("");
   };
 
-  /** Typed and pasted text take the same path in, so both are normalized. */
+  /**
+   * Typed and pasted text take the same path in, so both are normalized and
+   * both can produce a chip -- a terminal that ignores the bracketed-paste
+   * request still delivers a paste here, in chunks.
+   */
   const insert = (text: string) => {
     const clean = normalizeNewlines(text);
+    let piece = clean;
+    if (clean.includes("\n")) {
+      piece = pasteMark(pasted.current++);
+      pastes.current.set(piece, clean);
+    }
     setSelected(0);
     setDismissed(false);
-    put(input.slice(0, cursor) + clean + input.slice(cursor), cursor + clean.length);
+    put(input.slice(0, cursor) + piece + input.slice(cursor), cursor + piece.length);
   };
 
   // Paste is its own channel, so a pasted line break can never be read as a
@@ -255,7 +271,7 @@ export function App({
           put("");
           setSelected(0);
           remember(full);
-          onCommand(full);
+          onCommand(expandPastes(full, pastes.current));
           return;
         }
       }
@@ -268,9 +284,12 @@ export function App({
       // the agent is finished, so it is queued instead.
       // A command is the user acting on the session, so it runs immediately
       // even mid-turn; only instructions for the model wait their turn.
-      if (isCommand(text)) onCommand(text);
-      else if (busy) setQueued((q) => [...q, text]);
-      else onSubmit(text);
+      // History keeps the chip, so a recalled line still reads as one line.
+      // Only what leaves the client is expanded.
+      const full = expandPastes(text, pastes.current);
+      if (isCommand(text)) onCommand(full);
+      else if (busy) setQueued((q) => [...q, full]);
+      else onSubmit(full);
       return;
     }
     if (key.backspace) {
@@ -294,6 +313,12 @@ export function App({
     // paste here, in chunks, so this path normalizes too.
     if (char && !key.ctrl && !key.meta) insert(char);
   });
+
+  /** What a pasted block is drawn as. Its size is the only useful thing left. */
+  const chipLabel = (mark: string) => {
+    const lines = (pastes.current.get(mark) ?? "").split("\n").length;
+    return `[Pasted text #${pasteId(mark)} +${lines} lines]`;
+  };
 
   const term = stdout?.columns ?? 80;
 
@@ -424,42 +449,31 @@ export function App({
             {confirmQuit ? (
               <Label color="yellow">ctrl-c again to exit, any key to stay</Label>
             ) : (
-              <Stack direction="column" grow={1}>
-                {composerRows(input, cursor, COMPOSER_ROWS).map((row, i) =>
-                  row.kind === "hidden" ? (
-                    <Label key={`fold-${i}`} dim>{`\u2026 ${row.count} more line${row.count === 1 ? "" : "s"}`}</Label>
-                  ) : (
-                    <Label key={`row-${i}`}>
-                      {row.cursor === undefined ? (
-                        row.text
-                      ) : (
-                        <Label>
-                          {row.text.slice(0, row.cursor)}
-                          {/* At the end of the line the cursor is a bar, as
-                              it has always been. Inside the line it has to be
-                              a block: a bar between two characters reads as
-                              one of them. */}
-                          {row.cursor < row.text.length ? (
-                            <Label bg={CURSOR} color="black">{row.text[row.cursor]}</Label>
-                          ) : (
-                            <Label>{"\u258f"}</Label>
-                          )}
-                          {row.text.slice(row.cursor + 1)}
-                        </Label>
-                      )}
-                      {/* The hint is not text you typed, so it must not look
-                          like it. An explicit grey reads as absent in a way
-                          SGR dim does not -- dim white is still close to
-                          white on many themes. */}
-                      {input === "" && (
-                        <Label color="gray">
-                          {busy ? " type to queue the next instruction" : " describe a change, or ask about the code"}
-                        </Label>
-                      )}
-                    </Label>
-                  ),
+              <Label>
+                {composerPieces(input, cursor, chipLabel).map((piece, i) => (
+                  <Label
+                    key={i}
+                    bg={piece.cursor ? CURSOR : undefined}
+                    color={piece.cursor ? "black" : undefined}
+                  >
+                    {piece.text}
+                  </Label>
+                ))}
+                {/* At the end of the line the cursor is a bar, as it has
+                    always been. Inside the line it is a block on whatever it
+                    sits on: a bar between two characters reads as one of
+                    them, and on a chip it would read as a character of the
+                    label. */}
+                {cursor >= input.length && <Label>{"\u258f"}</Label>}
+                {/* The hint is not text you typed, so it must not look like
+                    it. An explicit grey reads as absent in a way SGR dim does
+                    not -- dim white is still close to white on many themes. */}
+                {input === "" && (
+                  <Label color="gray">
+                    {busy ? " type to queue the next instruction" : " describe a change, or ask about the code"}
+                  </Label>
                 )}
-              </Stack>
+              </Label>
             )}
           </Stack>
         )}
@@ -537,8 +551,6 @@ const NAME_COLUMN = 22;
 /** Width of the key column in the shortcut list. */
 const KEY_COLUMN = 18;
 
-/** Prompt rows shown before the middle of a paste is folded away. */
-const COMPOSER_ROWS = 4;
 
 /** The live frame is redrawn on every keystroke, so the list is capped. */
 const PALETTE_ROWS = 8;
