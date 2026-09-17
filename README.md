@@ -28,6 +28,17 @@ early compaction for testing.
 
 `MODEL=<name>` overrides the Ollama model.
 
+## Building
+
+```sh
+bun run build      # dist/tui and dist/agent, ~60 MB each
+```
+
+Both are standalone: verified running a real task with neither Bun nor
+`node_modules` present. Ink pulls in `react-devtools-core` lazily, which the
+compiler cannot resolve, so it is marked external — it is a development-only
+path and is never reached in a built binary.
+
 ## Layout
 
 ```
@@ -72,6 +83,7 @@ that one file.
 | Workspace boundary holds | `bun run scripts/boundary.ts` | passing |
 | Render cost on a long transcript | `bun run scripts/bench.tsx` | passing |
 | Ctrl-C quits when idle | `bun run scripts/quit-check.tsx` | passing |
+| UI changes nothing the runtime records | `bun run scripts/log-equivalence.tsx` | passing |
 | Sandbox blocks writes and egress | `bun run scripts/sandbox-check.ts` | passing |
 | Checkpoint restores a damaged file | `bun run scripts/checkpoint-check.ts` | passing |
 
