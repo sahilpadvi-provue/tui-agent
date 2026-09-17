@@ -20,7 +20,7 @@ const fakeStdin = Object.assign(new PassThrough(), {
 
 const app = render(
   <App bus={bus} cwd="/tmp/demo-repo" model="qwen3:8b" version="0.1.0" backend="ollama" sandbox="seatbelt" branch="main" busy={false}
-       onSubmit={() => {}} onCancel={() => {}} onPermission={() => {}} />,
+       onSubmit={() => {}} onCommand={() => {}} onCancel={() => {}} onPermission={() => {}} />,
   { stdout: fakeStdout as any, stdin: fakeStdin as any, interactive: false, patchConsole: false },
 );
 

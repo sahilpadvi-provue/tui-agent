@@ -23,7 +23,9 @@ export type ViewItem =
       running: boolean;
     }
   | { kind: "error"; text: string }
-  | { kind: "compaction"; dropped: number; summary: string };
+  | { kind: "compaction"; dropped: number; summary: string }
+  /** A command the user ran. Rendered like a tool call, attributed to them. */
+  | { kind: "local"; command: string; args: string; ok: boolean; output: string };
 
 export type ViewState = {
   items: ViewItem[];
@@ -38,9 +40,18 @@ export const initialState: ViewState = {
   usage: { input: 0, output: 0 },
 };
 
+/** Drops what is on screen without touching the log. Used by /clear. */
+export function cleared(s: ViewState): ViewState {
+  return { ...initialState, usage: s.usage };
+}
+
 const MAX_TOOL_OUTPUT = 4000;
 
-export function reduce(s: ViewState, e: AgentEvent): ViewState {
+export type ViewAction = AgentEvent | { kind: "clear" };
+
+export function reduce(s: ViewState, action: ViewAction): ViewState {
+  if ("kind" in action && action.kind === "clear") return cleared(s);
+  const e = action as AgentEvent;
   const items = s.items;
   switch (e.type) {
     case "message.started":
@@ -92,6 +103,12 @@ export function reduce(s: ViewState, e: AgentEvent): ViewState {
 
     case "agent.status":
       return { ...s, status: e.state };
+
+    case "local.invoked":
+      return {
+        ...s,
+        items: [...items, { kind: "local", command: e.command, args: e.args, ok: e.ok, output: e.output }],
+      };
 
     case "context.compacted":
       return { ...s, items: [...items, { kind: "compaction", dropped: e.droppedSeqs.length, summary: e.summary }] };

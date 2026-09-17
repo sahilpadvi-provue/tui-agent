@@ -15,7 +15,7 @@ async function frame(name: string, busy: boolean, drive: (e: (x: any) => void) =
   const bus = new EventBus();
   const app = render(
     <App bus={bus} cwd="/Users/sahilpadvi/Desktop/TUI" model="qwen3:8b" version="0.1.0" backend="ollama" sandbox="seatbelt" branch="main" busy={busy}
-         onSubmit={() => {}} onCancel={() => {}} onPermission={() => {}} />,
+         onSubmit={() => {}} onCommand={() => {}} onCancel={() => {}} onPermission={() => {}} />,
     { stdout: stdout as any, stdin: stdin as any, patchConsole: false },
   );
   drive((x) => bus.emit({ sessionId: "s", ...x }));

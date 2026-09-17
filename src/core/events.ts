@@ -78,6 +78,13 @@ export type AgentEvent = Base &
     | { type: "permission.resolved"; requestId: string; decision: PermissionDecision }
     | { type: "context.compacted"; droppedSeqs: number[]; summary: string; reason: string }
     | { type: "context.restored"; restoredSeqs: number[] }
+    /**
+     * A command the user ran, not the model. Logged for the audit trail and
+     * rendered in the transcript, but skipped by the conversation projection:
+     * "/help" is not something the agent said, and must never become a turn
+     * it has to account for.
+     */
+    | { type: "local.invoked"; command: string; args: string; ok: boolean; output: string }
     | { type: "agent.status"; state: RunState; detail?: string }
     | { type: "error"; message: string; fatal: boolean }
     /** Defined, never emitted in phase 1. Present so adding a second client

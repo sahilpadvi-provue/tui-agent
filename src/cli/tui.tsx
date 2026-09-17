@@ -1,13 +1,15 @@
 /**
- * Stage 2: the terminal client.
+ * The terminal client.
  *
- * It wires the same runtime the headless driver uses and mounts a view over
- * the bus. Note what is absent: the UI is handed `bus`, `onSubmit`, `onCancel`
- * and `onPermission`, and has no reference to the loop, the executor or the
- * model.
+ * This is the only layer that knows about every other one. The UI is handed
+ * `bus` and four callbacks and holds no reference to the loop, the executor or
+ * the model -- which is what `scripts/log-equivalence.tsx` checks.
  */
 import React from "react";
 import { randomUUID } from "node:crypto";
+import { spawnSync } from "node:child_process";
+import pkg from "../../package.json" with { type: "json" };
+
 import { EventBus } from "../core/bus.ts";
 import { EventLog } from "../core/log.ts";
 import { AgentLoop } from "../core/loop.ts";
@@ -19,9 +21,8 @@ import { OllamaClient } from "../model/ollama.ts";
 import { SYSTEM_PROMPT } from "../core/prompt.ts";
 import { mount } from "../ui/primitives.tsx";
 import { App } from "../ui/App.tsx";
-import type { PermissionDecision } from "../core/events.ts";
-import { spawnSync } from "node:child_process";
-import pkg from "../../package.json" with { type: "json" };
+import { runCommand, type CommandContext } from "../commands/registry.ts";
+import type { AgentEvent, PermissionDecision } from "../core/events.ts";
 
 /** Empty when the workspace is not a repo, which is a normal way to run. */
 function currentBranch(dir: string): string | undefined {
@@ -34,48 +35,72 @@ const cwd = process.cwd();
 const sessionId = randomUUID().slice(0, 8);
 const bus = new EventBus();
 const log = new EventLog(".sessions", sessionId);
-const model = new OllamaClient(process.env.MODEL ?? "qwen3:8b");
+const branch = currentBranch(cwd);
+
+let model = new OllamaClient(process.env.MODEL ?? "qwen3:8b");
+let history: AgentEvent[] = [];
 
 log.writeMeta({ sessionId, startedAt: new Date().toISOString(), cwd, model: model.name });
-bus.on((e) => log.append(e));
+bus.on((e) => {
+  log.append(e);
+  history.push(e);
+});
 
 const exec = new LocalExecutor(cwd, { sandbox: true, allowNetwork: true });
-const branch = currentBranch(cwd);
 const tools = new ToolRegistry();
 for (const t of builtinTools) tools.register(t);
 
 let resolvePermission: ((d: PermissionDecision) => void) | undefined;
+let loop = buildLoop();
 
-const loop = new AgentLoop({
+/**
+ * The loop takes its model and its starting history at construction, so
+ * changing either -- /model, /clear -- means building a new one. The bus, the
+ * log and the transcript are untouched, so nothing on screen or on disk moves.
+ */
+function buildLoop(startFrom: AgentEvent[] = history) {
+  return new AgentLoop({
+    sessionId,
+    bus,
+    model,
+    tools,
+    policy: new PermissionPolicy(),
+    toolContext: { exec, opts: { cwd } },
+    systemPrompt: SYSTEM_PROMPT,
+    checkpoints: true,
+    history: startFrom,
+    ask: () => new Promise<PermissionDecision>((r) => { resolvePermission = r; }),
+  });
+}
+
+/**
+ * Everything a command may reach. Each is implemented against something local
+ * today; `availableModels` is the one that becomes a gateway call, and it is
+ * injected here rather than imported so that swap is a change to this file.
+ */
+const commandContext: CommandContext = {
   sessionId,
-  bus,
-  model,
-  tools,
-  policy: new PermissionPolicy(),
-  toolContext: { exec, opts: { cwd } },
-  systemPrompt: SYSTEM_PROMPT,
-  ask: () => new Promise<PermissionDecision>((r) => { resolvePermission = r; }),
-});
+  cwd,
+  get history() { return history; },
+  get model() { return model.name; },
+  availableModels: () => model.listModels(),
+  setModel(name) {
+    model = new OllamaClient(name);
+    loop = buildLoop();
+  },
+  clear() {
+    history = [];
+    loop = buildLoop([]);
+  },
+  restore(seqs) {
+    bus.emit({ sessionId, type: "context.restored", restoredSeqs: seqs });
+  },
+};
 
 let busy = false;
-const instance = mount(
-  <App
-    bus={bus}
-    cwd={cwd}
-    model={model.name}
-    version={pkg.version}
-    backend="ollama"
-    sandbox={exec.describeSandbox()}
-    branch={branch}
-    busy={busy}
-    onSubmit={(text) => { void run(text); }}
-    onCancel={() => loop.cancel()}
-    onPermission={(d) => { resolvePermission?.(d); resolvePermission = undefined; }}
-  />,
-);
 
-function rerender() {
-  instance.rerender(
+function view() {
+  return (
     <App
       bus={bus}
       cwd={cwd}
@@ -86,11 +111,15 @@ function rerender() {
       branch={branch}
       busy={busy}
       onSubmit={(text) => { void run(text); }}
+      onCommand={(input) => { void invoke(input); }}
       onCancel={() => loop.cancel()}
       onPermission={(d) => { resolvePermission?.(d); resolvePermission = undefined; }}
-    />,
+    />
   );
 }
+
+const instance = mount(view());
+const rerender = () => instance.rerender(view());
 
 async function run(text: string) {
   busy = true;
@@ -101,6 +130,19 @@ async function run(text: string) {
     busy = false;
     rerender();
   }
+}
+
+async function invoke(input: string) {
+  const result = await runCommand(input, commandContext);
+  bus.emit({
+    sessionId,
+    type: "local.invoked",
+    command: result.name,
+    args: result.rest,
+    ok: result.ok,
+    output: result.output,
+  });
+  rerender();
 }
 
 await instance.waitUntilExit();

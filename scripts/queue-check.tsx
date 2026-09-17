@@ -21,7 +21,7 @@ const bus = new EventBus();
 const submitted: string[] = [];
 const props = (busy: boolean) => ({
   bus, cwd: "/tmp", model: "m", version: "0.1.0", backend: "b", sandbox: "off",
-  busy, onSubmit: (t: string) => submitted.push(t), onCancel: () => {}, onPermission: () => {},
+  busy, onSubmit: (t: string) => submitted.push(t), onCommand: () => {}, onCancel: () => {}, onPermission: () => {},
 });
 
 const app = render(<App {...props(true)} />, { stdout: stdout as any, stdin: stdin as any, patchConsole: false });

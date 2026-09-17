@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { Stack, Label, Settled, useKeys, useStdout, useApp, type Color } from "./primitives.tsx";
-import { reduce, initialState, type ViewItem } from "./model.ts";
+import { reduce, initialState, cleared, type ViewItem } from "./model.ts";
 import { Markdown } from "./markdown.tsx";
 import { bannerLines } from "./banner.ts";
 import {
@@ -10,6 +10,7 @@ import {
   type Line as L,
 } from "./layout.ts";
 import { radiusLines } from "../permissions/policy.ts";
+import { COMMANDS, isCommand } from "../commands/registry.ts";
 import type { EventBus } from "../core/bus.ts";
 import type { PermissionDecision } from "../core/events.ts";
 
@@ -25,6 +26,8 @@ export type AppProps = {
   /** Current git branch, when the workspace is a repo. */
   branch?: string;
   onSubmit: (text: string) => void;
+  /** Runs a slash command. The UI parses it; the wiring layer executes it. */
+  onCommand: (input: string) => void;
   onCancel: () => void;
   onPermission: (d: PermissionDecision) => void;
   busy: boolean;
@@ -41,7 +44,7 @@ export type AppProps = {
  */
 export function App({
   bus, cwd, model, version, backend, sandbox, branch,
-  onSubmit, onCancel, onPermission, busy,
+  onSubmit, onCommand, onCancel, onPermission, busy,
 }: AppProps) {
   const [state, dispatch] = useReducer(reduce, initialState);
   const [input, setInput] = useState("");
@@ -55,7 +58,12 @@ export function App({
   const { exit } = useApp();
 
   // The only connection to the runtime: a subscription. No calls in, ever.
-  useEffect(() => bus.on((e) => dispatch(e)), [bus]);
+  useEffect(() =>
+    bus.on((e) => {
+      if (e.type === "local.invoked" && e.command === "clear" && e.ok) dispatch({ kind: "clear" });
+      dispatch(e);
+    }),
+  [bus]);
 
   useEffect(() => {
     if (wasBusy.current && !busy && queued.length > 0) {
@@ -128,7 +136,10 @@ export function App({
       // A turn can run for minutes. Taking the keyboard away for that long
       // means the next instruction has to be held in the user's head until
       // the agent is finished, so it is queued instead.
-      if (busy) setQueued((q) => [...q, text]);
+      // A command is the user acting on the session, so it runs immediately
+      // even mid-turn; only instructions for the model wait their turn.
+      if (isCommand(text)) onCommand(text);
+      else if (busy) setQueued((q) => [...q, text]);
       else onSubmit(text);
       return;
     }
@@ -213,6 +224,15 @@ export function App({
                 {/* The hint is not text you typed, so it must not look like
                     it. An explicit grey reads as absent in a way SGR dim does
                     not -- dim white is still close to white on many themes. */}
+                {input.startsWith("/") && (
+                  <Label dim>
+                    {"   " + COMMANDS.map((c) => c.name)
+                      .filter((n) => n.startsWith(input.slice(1).split(" ")[0] ?? ""))
+                      .slice(0, 6)
+                      .map((n) => `/${n}`)
+                      .join("  ")}
+                  </Label>
+                )}
                 {input === "" && (
                   <Label color="gray">
                     {busy ? " type to queue the next instruction" : " describe a change, or ask about the code"}
@@ -446,5 +466,23 @@ function renderItem(i: ViewItem, term: number): L[] {
         dim: true,
         color: "yellow" as const,
       }];
+
+    // The user ran this, not the agent, so it gets its own mark rather than
+    // the tool tick -- attribution is the whole point of showing it.
+    case "local": {
+      const w = measureAt(DEPTH.did, term);
+      const out: L[] = [
+        styled(
+          DEPTH.did,
+          { text: "\u2941 ", color: i.ok ? "magenta" : "red" },
+          { text: `/${i.command}`, bold: true, color: i.ok ? undefined : "red" },
+          i.args ? { text: ` ${clip(i.args, w - i.command.length - 4)}`, dim: true } : null,
+        ),
+      ];
+      for (const line of i.output.split("\n")) {
+        out.push({ text: clip(line, measureAt(DEPTH.detail, term)), depth: DEPTH.detail, dim: true });
+      }
+      return out;
+    }
   }
 }

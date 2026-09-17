@@ -89,6 +89,17 @@ export class OllamaClient implements ModelClient {
     };
   }
 
+  /**
+   * What the backend has. The client never hardcodes a model list -- which
+   * models exist, and which this user may use, is the backend's to answer.
+   */
+  async listModels(): Promise<string[]> {
+    const res = await fetch(`${this.host}/api/tags`);
+    if (!res.ok) throw new Error(`ollama ${res.status}`);
+    const body = (await res.json()) as { models?: { name?: string }[] };
+    return (body.models ?? []).map((m) => m.name).filter((n): n is string => !!n).sort();
+  }
+
   async *stream(
     messages: ConvoMessage[],
     tools: unknown[],

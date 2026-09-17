@@ -79,6 +79,10 @@ export function project(events: AgentEvent[]): Projection {
       case "context.restored":
         for (const s of e.restoredSeqs) hidden.delete(s);
         break;
+      // Deliberately not a message: the user ran it, and the model neither
+      // asked for it nor needs to account for it.
+      case "local.invoked":
+        break;
     }
   }
 

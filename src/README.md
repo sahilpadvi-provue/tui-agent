@@ -10,6 +10,7 @@ The layers, innermost first. Each depends only on the ones above it in this list
 | `model/` | What the loop needs from a model, and the Ollama adapter | `core/projection` for message shape |
 | `permissions/` | Tiered policy and category deny rules | `core/events`, `tools/` |
 | `ui/` | The terminal client | `core/` (events only), `permissions/` for display |
+| `commands/` | Slash commands the user runs, as opposed to tools the model calls | `core/`, `exec/` |
 | `cli/` | Entry points that wire the above together | everything |
 
 The dependency direction is the design. `core/` cannot import `ui/`; if it ever needs to, the boundary has failed.

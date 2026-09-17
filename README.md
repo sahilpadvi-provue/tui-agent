@@ -28,6 +28,29 @@ early compaction for testing.
 
 `MODEL=<name>` overrides the Ollama model.
 
+## Commands
+
+Typed into the composer with a leading `/`. They are the user acting on the
+session, so they run immediately even mid-turn, are recorded in the log for the
+audit trail, and are skipped by the conversation projection — `/help` is not
+something the agent said.
+
+| | |
+| --- | --- |
+| `/help` | list the commands |
+| `/context` | what compaction hid, with the line to put it back |
+| `/restore <seqs>` | put those events back into context |
+| `/model [name]` | show what the backend offers, or switch |
+| `/sessions` | sessions recorded in this workspace |
+| `/resume <id>` | how to continue an earlier one |
+| `/checkpoints` | git snapshots taken before edits |
+| `/clear` | start a fresh conversation, keeping the log |
+
+Every one is implemented against something local today. `/model` is the one
+that becomes a gateway call — it asks `availableModels()`, which is injected in
+`src/cli/tui.tsx` rather than imported, so the swap is a change to that file
+and to nothing else.
+
 ## Building
 
 ```sh
@@ -87,6 +110,7 @@ that one file.
 | Typing stays live during a turn | `bun run scripts/queue-check.tsx` | passing |
 | Esc kills the process tree, keeps partial output | `bun run scripts/cancel-check.ts` | passing |
 | A session survives the process that made it | `bun run scripts/resume-check.ts` | passing |
+| Commands run locally and stay out of the model's context | `bun run scripts/commands-check.tsx` | passing |
 | Sandbox blocks writes and egress | `bun run scripts/sandbox-check.ts` | passing |
 | Checkpoint restores a damaged file | `bun run scripts/checkpoint-check.ts` | passing |
 

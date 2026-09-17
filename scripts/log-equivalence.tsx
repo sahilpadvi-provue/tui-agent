@@ -80,7 +80,7 @@ async function runOnce(withUi: boolean): Promise<AgentEvent[]> {
     const stdin = Object.assign(new PassThrough(), { isTTY: true, setRawMode() {}, ref() {}, unref() {} });
     app = render(
       <App bus={bus} cwd={dir} model="scripted" version="0.1.0" backend="scripted"
-           sandbox="off" busy onSubmit={() => {}} onCancel={() => {}} onPermission={() => {}} />,
+           sandbox="off" busy onSubmit={() => {}} onCommand={() => {}} onCancel={() => {}} onPermission={() => {}} />,
       { stdout: stdout as any, stdin: stdin as any, patchConsole: false },
     );
   }

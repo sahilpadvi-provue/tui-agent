@@ -12,7 +12,7 @@ const stdin = Object.assign(new PassThrough(), { isTTY: true, setRawMode() {}, r
 
 const app = render(
   <App bus={new EventBus()} cwd="/tmp" model="m" version="0.1.0" backend="ollama" sandbox="seatbelt" branch="main" busy={false}
-       onSubmit={() => {}} onCancel={() => {}} onPermission={() => {}} />,
+       onSubmit={() => {}} onCommand={() => {}} onCancel={() => {}} onPermission={() => {}} />,
   { stdout: stdout as any, stdin: stdin as any, patchConsole: false, exitOnCtrlC: false },
 );
 
