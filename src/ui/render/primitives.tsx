@@ -7,7 +7,7 @@
  */
 
 import React, {
-  createContext, useContext, useEffect, useReducer, useRef,
+  createContext, useContext, useEffect, useMemo, useRef, useState,
   type ReactNode,
 } from "react";
 import { LegacyRoot } from "react-reconciler/constants.js";
@@ -115,6 +115,8 @@ export function Settled<T>({
 
 type Session = {
   out: NodeJS.WriteStream;
+  /** Mirrors `out.columns`, so a resize changes the context value itself. */
+  columns?: number;
   exit: () => void;
   keys: Set<(e: KeyEvent) => void>;
   pastes: Set<(text: string) => void>;
@@ -131,16 +133,28 @@ function useSession(): Session {
 /**
  * Width is read during render, so a resize has to re-render rather than just
  * repaint -- every wrapped line and every elastic field is derived from it.
+ *
+ * The width therefore goes into the context value, and a resize replaces that
+ * value. Bumping a counter here instead re-renders only this component:
+ * `children` is the same element on the way back out, React bails out of the
+ * subtree, no host node changes and nothing repaints. The symptom is narrow
+ * and easy to miss -- on an idle screen a resize does nothing until the next
+ * keystroke, while anything with a timer running looks fine, because its next
+ * tick re-renders and picks the new width up. `scripts/quiet-resize-check.tsx`
+ * is the guard, and it asserts on a component that has no other reason to
+ * render, which is the only arrangement that can tell the two apart.
  */
 function Session({ value, children }: { value: Session; children: ReactNode }) {
-  const [, bump] = useReducer((n: number) => n + 1, 0);
+  const [columns, setColumns] = useState(value.out.columns);
   useEffect(() => {
-    value.out.on("resize", bump);
+    const onResize = () => setColumns(value.out.columns);
+    value.out.on("resize", onResize);
     return () => {
-      value.out.off("resize", bump);
+      value.out.off("resize", onResize);
     };
   }, [value]);
-  return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
+  const session = useMemo(() => ({ ...value, columns }), [value, columns]);
+  return <SessionContext.Provider value={session}>{children}</SessionContext.Provider>;
 }
 
 /** Subscribes once and calls through a ref, so a new closure each render is free. */
