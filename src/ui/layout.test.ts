@@ -10,6 +10,7 @@ import { test, expect, describe, afterEach } from "bun:test";
 import {
   measureAt, wrap, clip, outputLines, summariseCall, verbFor,
   shortenPath, shimmer, highlightCommand,
+  charWidth, displayWidth, sliceToWidth,
 } from "./layout.ts";
 
 describe("measureAt", () => {
@@ -171,5 +172,43 @@ describe("highlightCommand", () => {
     const spans = highlightCommand("ls -la src/x");
     expect(spans.find((s) => s.text === "-la")?.color).toBe("yellow");
     expect(spans.find((s) => s.text === "src/x")?.dim).toBe(true);
+  });
+});
+
+describe("display width", () => {
+  test("an empty string is zero columns", () => {
+    expect(displayWidth("")).toBe(0);
+  });
+  test("a string of only combining marks is zero columns", () => {
+    expect(displayWidth("\u0301\u0302\u0303")).toBe(0);
+  });
+  test("a zero budget yields nothing rather than a partial glyph", () => {
+    expect(sliceToWidth("abc", 0)).toBe("");
+    expect(sliceToWidth("\u{1F680}", 1)).toBe("");
+  });
+  test("a lone surrogate arriving as input does not throw", () => {
+    expect(() => displayWidth("\ud83d")).not.toThrow();
+    expect(displayWidth("\ud83d")).toBe(1);
+  });
+  test("charWidth is defined for the whole BMP boundary", () => {
+    expect(charWidth(0x02ff)).toBe(1);
+    expect(charWidth(0x0300)).toBe(0);
+    expect(charWidth(0x10ffff)).toBe(1);
+  });
+});
+
+describe("wrap, on widths that could not terminate", () => {
+  // sliceToWidth returns "" at width 0, so the break loop needs its
+  // take-at-least-one-code-point guard or it never finishes.
+  test("an over-wide word at width one still terminates", () => {
+    const out = wrap("aaaa", 1);
+    expect(out).toEqual(["a", "a", "a", "a"]);
+  });
+  test("and a wide glyph narrower than the measure is not dropped", () => {
+    const out = wrap("\u{1F680}\u{1F680}", 1);
+    expect(out.join("")).toBe("\u{1F680}\u{1F680}");
+  });
+  test("clip at a width of one is still a single character", () => {
+    expect(displayWidth(clip("hello", 1))).toBeLessThanOrEqual(1);
   });
 });

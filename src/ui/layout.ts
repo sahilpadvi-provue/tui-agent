@@ -94,6 +94,71 @@ export function measureAt(depth: number, termWidth: number): number {
 }
 
 /**
+ * Display columns, not code units.
+ *
+ * `.length` is wrong in both directions. An emoji is two code units and two
+ * columns; a CJK ideograph is one unit and two columns. Measuring with it
+ * split a surrogate pair inside `clip`, putting an orphaned high surrogate on
+ * the wire, and let a line of Japanese through `wrap` unwrapped at about twice
+ * the width it was measured against.
+ *
+ * A compact subset of Unicode's EastAsianWidth: the Wide and Fullwidth blocks
+ * that occur in a coding session, plus zero for combining marks and the
+ * joiners that build emoji sequences. Deliberately not the full table. Being
+ * wrong about an unassigned plane costs one column; being wrong about
+ * `.length` costs a broken byte.
+ */
+const ZERO: readonly (readonly [number, number])[] = [
+  [0x0300, 0x036f], [0x1ab0, 0x1aff], [0x1dc0, 0x1dff], [0x200b, 0x200f],
+  [0x20d0, 0x20ff], [0xfe00, 0xfe0f], [0xfe20, 0xfe2f],
+];
+
+const WIDE: readonly (readonly [number, number])[] = [
+  [0x1100, 0x115f], [0x2e80, 0x303e], [0x3041, 0x33ff], [0x3400, 0x4dbf],
+  [0x4e00, 0x9fff], [0xa000, 0xa4cf], [0xa960, 0xa97f], [0xac00, 0xd7a3],
+  [0xf900, 0xfaff], [0xfe10, 0xfe19], [0xfe30, 0xfe6f], [0xff00, 0xff60],
+  [0xffe0, 0xffe6], [0x1f300, 0x1f9ff], [0x1fa70, 0x1faff],
+  [0x20000, 0x2fffd], [0x30000, 0x3fffd],
+];
+
+const inAny = (code: number, ranges: readonly (readonly [number, number])[]): boolean => {
+  for (const [lo, hi] of ranges) if (code >= lo && code <= hi) return true;
+  return false;
+};
+
+/** Columns one code point occupies. ASCII short-circuits, since it is nearly all of it. */
+export function charWidth(code: number): 0 | 1 | 2 {
+  if (code < 0x0300) return 1;
+  if (inAny(code, ZERO)) return 0;
+  if (inAny(code, WIDE)) return 2;
+  return 1;
+}
+
+export function displayWidth(s: string): number {
+  let w = 0;
+  for (const ch of s) w += charWidth(ch.codePointAt(0)!);
+  return w;
+}
+
+/**
+ * The longest prefix of `s` that fits `cols` columns.
+ *
+ * Iterates code points, so it can never end inside a surrogate pair, and stops
+ * before a wide glyph rather than half-drawing it.
+ */
+export function sliceToWidth(s: string, cols: number): string {
+  let w = 0;
+  let out = "";
+  for (const ch of s) {
+    const cw = charWidth(ch.codePointAt(0)!);
+    if (w + cw > cols) break;
+    w += cw;
+    out += ch;
+  }
+  return out;
+}
+
+/**
  * Wraps prose on word boundaries, preserving the blank lines between
  * paragraphs and nothing else.
  *
@@ -107,13 +172,33 @@ export function wrap(text: string, width: number): string[] {
   const out: string[] = [];
   for (const para of text.split("\n")) {
     const line = para.trimEnd();
-    if (line.length <= width) {
+    if (displayWidth(line) <= width) {
       out.push(line);
       continue;
     }
     let current = "";
     for (const word of line.split(/\s+/)) {
-      if (current && (current + " " + word).length > width) {
+      // A word too wide for a line of its own is broken. It is the one case
+      // where honouring word boundaries costs more than it buys: Japanese has
+      // no spaces, so a whole sentence arrives as a single word and used to
+      // pass through unwrapped at roughly twice the measure, overflowing the
+      // band. A word that fits is still never broken.
+      if (displayWidth(word) > width) {
+        if (current) {
+          out.push(current);
+          current = "";
+        }
+        let rest = word;
+        while (displayWidth(rest) > width) {
+          // At least one code point, or a width of zero would not terminate.
+          const head = sliceToWidth(rest, width) || [...rest][0]!;
+          out.push(head);
+          rest = rest.slice(head.length);
+        }
+        current = rest;
+        continue;
+      }
+      if (current && displayWidth(current + " " + word) > width) {
         out.push(current);
         current = word;
       } else {
@@ -136,7 +221,8 @@ export function wrap(text: string, width: number): string[] {
 /** Single-line clip. For output and code, where re-wrapping would mislead. */
 export function clip(s: string, width: number): string {
   const flat = s.replace(/\t/g, "  ").replace(/\n/g, " ");
-  return flat.length > width ? flat.slice(0, width - 1) + "…" : flat;
+  if (displayWidth(flat) <= width) return flat;
+  return sliceToWidth(flat, Math.max(0, width - 1)) + "…";
 }
 
 /**

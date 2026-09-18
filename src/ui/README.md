@@ -79,6 +79,10 @@ Four numbers, in `layout.ts`. Anything new should replace one of them, not join 
 
 **Blank rows in prose belong to the layout, not the model.** `wrap()` drops leading and trailing blanks and collapses runs to one, so the gap before the next thing on screen does not depend on how many newlines a model happened to end with. Paragraph breaks inside a message survive.
 
+**Width is columns, never `.length`.** `.length` counts UTF-16 code units and is wrong in both directions: an emoji is two units and two columns, a CJK ideograph is one unit and two columns. Measuring with it put an orphaned high surrogate on the wire from `clip`, and let a line of Japanese through `wrap` at half its real width, overflowing the band. `charWidth` / `displayWidth` / `sliceToWidth` in `layout.ts` are the only correct way to measure, and `push` in `render/screen.ts` gives a wide glyph two cells and a combining mark none, so the grid counts what the terminal draws. ASCII short-circuits on the first comparison, because it is nearly all of it.
+
+**A word too wide for a line of its own is broken; one that fits never is.** Word boundaries are what prose needs, but Japanese has no spaces, so a whole sentence arrives as one word. The break has a take-at-least-one-code-point guard: `sliceToWidth` returns nothing at width zero, and without it the loop would not terminate.
+
 **Prose wraps; output and code clip.** Re-flowing a diff or a stack trace to a narrow measure destroys the alignment that makes it readable, so those are truncated at the available width instead.
 
 ## Weight

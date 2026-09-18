@@ -150,14 +150,21 @@ it. Ink is a dev dependency, now both the second backend and the control arm in
 - ~20 gate scripts in `scripts/` (`*-check`, `*-smoke`): boundary, sandbox,
   cancel, resume, checkpoint, log-equivalence, queue, commands, keys, resize,
   quiet-resize, colour, markdown, input, render, host, app, quit, backend,
-  resume-ui, ui-smoke. These are the primary check; they prove behaviour end to
-  end. All 20 runnable ones pass as of this writing.
+  resume-ui, changed, width, ui-smoke. These are the primary check; they prove
+  behaviour end to end. All 22 runnable ones pass as of this writing.
 - `bun test src/` — unit tests for `editor.ts` and `layout.ts` (64 tests), a
   complement to the gates, not a replacement.
 - 5 eval fixtures in `evals/`.
 
 ## Hard-won gotchas
 
+- **`.length` is not a width.** It counts UTF-16 code units, so an emoji
+  measures two and a CJK ideograph measures one, when both draw two columns.
+  `clip` sliced by unit and put an orphaned high surrogate on the wire; `wrap`
+  measured Japanese at half its width and overflowed the band. Fixed with
+  `displayWidth` / `sliceToWidth`, and `push` now gives a wide glyph two cells.
+  Reachable from tool arguments, tool output, queued rows, palette summaries
+  and the footer title, so there is no ASCII-only path.
 - **A gate can pass while the feature is unusable.** `resume-check` drove
   `resume()` and the loop in process with a scripted model and never spawned a
   CLI, so it was green the whole time `agent --resume` crashed on a missing id

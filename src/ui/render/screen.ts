@@ -13,7 +13,7 @@
  */
 
 import type { Color } from "../backend.ts";
-import { GUTTER, STEP, type Line, type Span } from "../layout.ts";
+import { GUTTER, STEP, charWidth, type Line, type Span } from "../layout.ts";
 import { blockStyle, segments } from "../markdown.tsx";
 import { FILL } from "./host.ts";
 
@@ -120,8 +120,29 @@ function sgrFor(style: {
   return codes.length === 0 ? "" : `\x1b[${codes.join(";")}m`;
 }
 
+/**
+ * One cell per column, not one per code point.
+ *
+ * A wide glyph draws two columns, so it takes two cells: the glyph and an
+ * empty continuation. `rowText` concatenates cell characters in order, so the
+ * empty one contributes the column the glyph already occupies. Without it the
+ * grid counts one column where the terminal draws two, and every cell after
+ * it on the row is addressed one column early.
+ *
+ * A combining mark draws no column of its own, so it joins the cell before it
+ * rather than claiming one.
+ */
 function push(out: Cell[], text: string, sgr: string): void {
-  for (const char of text) out.push({ char, sgr });
+  for (const char of text) {
+    const w = charWidth(char.codePointAt(0)!);
+    if (w === 0) {
+      const prev = out[out.length - 1];
+      if (prev) out[out.length - 1] = { char: prev.char + char, sgr: prev.sgr };
+      continue;
+    }
+    out.push({ char, sgr });
+    if (w === 2) out.push({ char: "", sgr });
+  }
 }
 
 /**

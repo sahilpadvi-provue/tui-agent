@@ -57,6 +57,7 @@ Most diffs add zero comments. Do not comment code you did not otherwise change.
 ## Code style
 
 - No `any`. Narrow the type. `noUncheckedIndexedAccess` is on — handle the `undefined`.
+- Never measure text with `.length`. Use `displayWidth` / `sliceToWidth` from `src/ui/layout.ts`: an emoji is two code units and two columns, a CJK ideograph is one and two.
 - Import `RefObject` / `ReactNode` directly from `"react"`, never via `React.*`.
 - Files and directories kebab-case; components PascalCase inside. `.tsx` only where JSX is used.
 - Imports carry the `.ts` / `.tsx` extension (`allowImportingTsExtensions`).
@@ -141,6 +142,8 @@ bun run md:check                                       # emphasis survives the r
 bun run scripts/keys-check.tsx                         # every key binding edits what it claims to
 bun run backend:check                                  # every renderer backend draws the same screen
 bun run resume:check                                   # resume works from the terminal client
+bun run changed:check                                  # what a call changed reaches the view model
+bun run width:check                                    # width is columns, not code units
 ```
 
 ## Attribution
