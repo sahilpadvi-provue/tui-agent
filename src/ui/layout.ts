@@ -312,9 +312,20 @@ export function shortenPath(p: string, width: number): string {
  */
 const SHIMMER = ["#ffffff", "#d4d4d4", "#a0a0a0", "#7a7a7a", "#5f5f5f"] as const;
 
+/**
+ * How far past each end the highlight travels.
+ *
+ * Two less than the ramp, and the two are the whole point. Travel further and
+ * every character clamps to the darkest shade for a run of frames: the word
+ * becomes a static dark label, which is the one thing this exists to prevent.
+ * Travel no further at all and the highlight pops onto the first character
+ * instead of arriving.
+ */
+const LEAD = SHIMMER.length - 2;
+
 export function shimmer(text: string, phase: number): Span[] {
-  const span = text.length + SHIMMER.length * 2;
-  const head = phase % span;
+  const span = text.length + LEAD * 2;
+  const head = (phase % span) - LEAD;
   return [...text].map((ch, i) => {
     const distance = Math.abs(i - head);
     const shade = SHIMMER[Math.min(distance, SHIMMER.length - 1)]!;
@@ -343,9 +354,11 @@ export function highlightCommand(command: string): Span[] {
       out.push({ text: token, color: "cyan" });
       continue;
     }
-    if (token.startsWith("-")) out.push({ text: token, color: "yellow" });
-    else if (token.includes("/")) out.push({ text: token, dim: true });
-    else if (/^[|;&><]+$/.test(token)) out.push({ text: token, color: "magenta" });
+    // A path is a name, so it takes the same colour as the binary: the reader's
+    // question is what the command touched, and the flags are never the answer.
+    if (token.startsWith("-")) out.push({ text: token, dim: true });
+    else if (token.includes("/") || token.includes(".")) out.push({ text: token, color: "cyan" });
+    else if (/^[|;&><]+$/.test(token)) out.push({ text: token, dim: true });
     else out.push({ text: token });
   }
   return out;
