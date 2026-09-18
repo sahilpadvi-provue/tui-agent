@@ -22,10 +22,11 @@ import createReconciler from "react-reconciler";
 import { DefaultEventPriority, NoEventPriority } from "react-reconciler/constants.js";
 import { createContext } from "react";
 import type { Line, Span } from "../layout.ts";
+import type { Paint } from "../../theme/index.ts";
 
 type Style = {
-  color?: string;
-  bg?: string;
+  color?: Paint;
+  bg?: Paint;
   dim?: boolean;
   bold?: boolean;
   italic?: boolean;
@@ -165,8 +166,10 @@ function boxFrom(props: Record<string, unknown>): Omit<BoxNode, "children"> {
 
 function styleFrom(props: Record<string, unknown>): Style {
   const s: Style = {};
-  if (typeof props["color"] === "string") s.color = props["color"];
-  if (typeof props["bg"] === "string") s.bg = props["bg"];
+  // A `Paint` rather than a string since roles landed: the host carries what
+  // the theme resolved to and the screen turns it into codes.
+  if (props["color"] !== undefined) s.color = props["color"] as Paint;
+  if (props["bg"] !== undefined) s.bg = props["bg"] as Paint;
   if (typeof props["dim"] === "boolean") s.dim = props["dim"];
   if (typeof props["bold"] === "boolean") s.bold = props["bold"];
   if (typeof props["italic"] === "boolean") s.italic = props["italic"];

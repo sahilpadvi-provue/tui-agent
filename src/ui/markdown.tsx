@@ -1,6 +1,6 @@
 import React, { type ReactNode } from "react";
 import { Label } from "./primitives.tsx";
-import type { Color } from "./backend.ts";
+import type { Paint, Theme } from "../theme/index.ts";
 
 /**
  * Inline markdown for terminal output.
@@ -32,7 +32,7 @@ export function segments(text: string): Seg[] {
 }
 
 /** Heading and list markers become style, not characters. */
-export function blockStyle(line: string): { text: string; bold?: boolean; color?: Color } {
+export function blockStyle(line: string): { text: string; bold?: boolean } {
   const heading = /^(#{1,6})\s+(.*)$/.exec(line);
   if (heading) return { text: heading[2]!, bold: true };
   const bullet = /^(\s*)[-*+]\s+(.*)$/.exec(line);
@@ -45,20 +45,22 @@ export function Markdown({
   indent = "",
   color,
   dim,
+  theme,
 }: {
   line: string;
   /** Leading columns, passed in so depth stays owned by the layout system. */
   indent?: string;
-  color?: Color;
+  color?: Paint;
   dim?: boolean;
+  theme: Theme;
 }): ReactNode {
   const block = blockStyle(line);
   const segs = segments(block.text);
   return (
-    <Label color={color ?? block.color} dim={dim} bold={block.bold}>
+    <Label color={color} dim={dim} bold={block.bold}>
       {indent}
       {segs.map((s, i) => (
-        <Label key={i} bold={s.bold} italic={s.italic} color={s.code ? "cyan" : undefined}>
+        <Label key={i} bold={s.bold} italic={s.italic} color={s.code ? theme.name : undefined}>
           {s.text}
         </Label>
       ))}

@@ -13,6 +13,7 @@
  */
 import { clip, wrap, displayWidth, charWidth, sliceToWidth, type Line } from "../src/ui/layout.ts";
 import { paint, cellAt } from "../src/ui/render/screen.ts";
+import { rgb } from "../src/theme/index.ts";
 
 let failures = 0;
 const check = (name: string, ok: boolean, detail = "") => {
@@ -98,7 +99,7 @@ check("a CJK row wraps in the grid at the column it reaches, not the unit",
 
 // The band fills to the row's width from the cell count, so an undercount left
 // it short and broke the one element on screen that depends on being exact.
-const banded = grid({ text: JP, band: true, width: 30, depth: 0 }, 30);
+const banded = grid({ text: JP, band: rgb("#2a2a2a"), width: 30, depth: 0 }, 30);
 let filled = 0;
 for (let x = 0; x < 30; x++) if (cellAt(banded, x, 0).sgr !== "") filled++;
 check("a banded row with CJK in it still fills its whole width", filled === 30, `${filled} of 30`);

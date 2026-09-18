@@ -24,6 +24,7 @@ import { mount } from "../ui/primitives.tsx";
 import { App, type SessionChoice } from "../ui/App.tsx";
 import { runCommand, type CommandContext } from "../commands/registry.ts";
 import { listSessions, resume, sessionLine } from "../core/session.ts";
+import { dark, themeNamed, type Theme } from "../theme/index.ts";
 import type { AgentEvent, PermissionDecision } from "../core/events.ts";
 
 /** Empty when the workspace is not a repo, which is a normal way to run. */
@@ -51,6 +52,9 @@ const bus = new EventBus();
 let sessionId = randomUUID().slice(0, 8);
 let log = new EventLog(".sessions", sessionId);
 let model = new OllamaClient(process.env.MODEL ?? "qwen3:8b");
+// Selected the way MODEL is, and falling back rather than failing: a mistyped
+// theme is not a reason to refuse to start.
+let theme: Theme = themeNamed(process.env.THEME ?? "") ?? dark;
 let history: AgentEvent[] = [];
 /** A new array is what tells the UI to replace the transcript. */
 let seed: readonly AgentEvent[] | undefined;
@@ -204,6 +208,10 @@ const commandContext: CommandContext = {
   resume(id) {
     openSession(id);
   },
+  get theme() { return theme.id; },
+  setTheme(next) {
+    theme = next;
+  },
 };
 
 /**
@@ -243,6 +251,7 @@ function view() {
       sandbox={exec.describeSandbox()}
       branch={branch}
       busy={busy}
+      theme={theme}
       sessions={sessionChoices}
       seed={seed}
       initialInput={initialInput}

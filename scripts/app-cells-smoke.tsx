@@ -5,6 +5,7 @@ import { EventBus } from "../src/core/bus.ts";
 import { App } from "../src/ui/App.tsx";
 import { mount } from "../src/ui/primitives.tsx";
 import { Term } from "./vt.ts";
+import { dark } from "../src/theme/index.ts";
 
 // Escape sequences carry the row boundaries, so the output has to be played
 // into a terminal to be read back. Stripping them concatenates every row.
@@ -19,7 +20,7 @@ const stdin: any = Object.assign(new PassThrough(), {
 
 const bus = new EventBus();
 const app = mount(
-  <App bus={bus} cwd="/tmp/demo" model="qwen3:8b" version="0.1.0" backend="ollama"
+  <App theme={dark} bus={bus} cwd="/tmp/demo" model="qwen3:8b" version="0.1.0" backend="ollama"
        sandbox="seatbelt" branch="main" busy={true}
        onSubmit={() => {}} onCommand={() => {}} onCancel={() => {}} onPermission={() => {}} />,
   { stdout, stdin },

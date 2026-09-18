@@ -25,6 +25,7 @@ import { PermissionPolicy } from "../src/permissions/policy.ts";
 import { App } from "../src/ui/App.tsx";
 import type { AgentEvent } from "../src/core/events.ts";
 import type { ModelChunk, ModelClient } from "../src/model/client.ts";
+import { dark } from "../src/theme/index.ts";
 
 /** A model with no opinions: the same turns every time. */
 class ScriptedModel implements ModelClient {
@@ -79,7 +80,7 @@ async function runOnce(withUi: boolean): Promise<AgentEvent[]> {
       { columns: 92, rows: 30, isTTY: true });
     const stdin = Object.assign(new PassThrough(), { isTTY: true, setRawMode() {}, ref() {}, unref() {} });
     app = mount(
-      <App bus={bus} cwd={dir} model="scripted" version="0.1.0" backend="scripted"
+      <App theme={dark} bus={bus} cwd={dir} model="scripted" version="0.1.0" backend="scripted"
            sandbox="off" busy onSubmit={() => {}} onCommand={() => {}} onCancel={() => {}} onPermission={() => {}} />,
       { stdout: stdout as any, stdin: stdin as any },
     );

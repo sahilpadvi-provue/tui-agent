@@ -19,6 +19,7 @@ import { EventBus } from "../src/core/bus.ts";
 import type { Backend } from "../src/ui/backend.ts";
 import { cellsBackend } from "../src/ui/backends/cells.tsx";
 import { inkBackend } from "../src/ui/backends/ink.tsx";
+import { dark, rgb, slot } from "../src/theme/index.ts";
 
 let failures = 0;
 const check = (name: string, ok: boolean, detail = "") => {
@@ -54,10 +55,10 @@ const shared = (
   <Stack>
     <Settled items={["settled one", "settled two"]} render={(t, i) => <Label key={i}>{t}</Label>} />
     <Label>plain row</Label>
-    <Label color="cyan" bold>tinted and bold</Label>
+    <Label color={slot("cyan")} bold>tinted and bold</Label>
     <Label>
       {"outer "}
-      <Label color="green">inner</Label>
+      <Label color={slot("green")}>inner</Label>
       {" tail"}
     </Label>
     {/* A newline is a row break in both, not a cell. The cell renderer used
@@ -68,7 +69,7 @@ const shared = (
       <Label>left</Label>
       <Label>right</Label>
     </Stack>
-    <Stack border borderColor="cyan">
+    <Stack border borderColor={slot("cyan")}>
       <Label>boxed</Label>
     </Stack>
     <Stack direction="row" align="between">
@@ -142,7 +143,7 @@ check(
  * the comparison collapses whitespace runs rather than pretending otherwise.
  */
 const app = (
-  <App bus={new EventBus()} cwd="/tmp/demo" model="qwen3:8b" version="0.1.0"
+  <App theme={dark} bus={new EventBus()} cwd="/tmp/demo" model="qwen3:8b" version="0.1.0"
        backend="ollama" sandbox="seatbelt" branch="main" busy={false}
        onSubmit={() => {}} onCommand={() => {}} onCancel={() => {}} onPermission={() => {}} />
 );

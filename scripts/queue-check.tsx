@@ -11,6 +11,7 @@ import { mount } from "../src/ui/primitives.tsx";
 import { PassThrough, Writable } from "node:stream";
 import { EventBus } from "../src/core/bus.ts";
 import { App } from "../src/ui/App.tsx";
+import { dark } from "../src/theme/index.ts";
 
 let buf = "";
 const stdout = Object.assign(new Writable({ write(c, _e, cb) { buf += String(c); cb(); return true; } }),
@@ -24,7 +25,7 @@ const props = (busy: boolean) => ({
   busy, onSubmit: (t: string) => submitted.push(t), onCommand: () => {}, onCancel: () => {}, onPermission: () => {},
 });
 
-const app = mount(<App {...props(true)} />, { stdout: stdout as any, stdin: stdin as any });
+const app = mount(<App theme={dark} {...props(true)} />, { stdout: stdout as any, stdin: stdin as any });
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const plain = () => buf.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "");
 
@@ -49,7 +50,7 @@ check("Enter does not submit while busy", submitted.length === 0, `submitted ${s
 check("queued line is shown", /queued/.test(plain()));
 
 buf = "";
-app.rerender(<App {...props(false)} />);
+app.rerender(<App theme={dark} {...props(false)} />);
 await wait(200);
 check("queue flushes when idle", submitted.length === 1 && submitted[0] === "run the linter next",
   JSON.stringify(submitted));

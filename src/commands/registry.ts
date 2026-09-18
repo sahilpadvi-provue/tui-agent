@@ -18,6 +18,7 @@
 import type { AgentEvent } from "../core/events.ts";
 import { project } from "../core/projection.ts";
 import { listSessions } from "../core/session.ts";
+import { THEMES, themeNamed, type Theme, type ThemeId } from "../theme/index.ts";
 import { listCheckpoints } from "../exec/checkpoint.ts";
 
 export type CommandContext = {
@@ -43,6 +44,9 @@ export type CommandContext = {
    * unknown or the session was recorded against a different workspace.
    */
   resume(sessionId: string): void;
+  /** Which theme is showing, and how to change it. */
+  readonly theme: ThemeId;
+  setTheme(theme: Theme): void;
 };
 
 export type CommandResult = { ok: boolean; output: string };
@@ -136,6 +140,29 @@ const resumeCmd: Command = {
   },
 };
 
+const themeCmd: Command = {
+  name: "theme",
+  takes: "[dark|light]",
+  summary: "switch between the built-in themes",
+  run: async (rest, ctx) => {
+    const wanted = rest.trim();
+    // With no argument it says what there is and which one is showing, rather
+    // than failing at someone who has forgotten the names.
+    if (!wanted) {
+      return {
+        ok: true,
+        output: THEMES.map((t) => `  ${t.id === ctx.theme ? "\u203a" : " "} ${t.id}`).join("\n"),
+      };
+    }
+    const found = themeNamed(wanted);
+    if (!found) {
+      return { ok: false, output: `no theme "${wanted}". There is ${THEMES.map((t) => t.id).join(" and ")}.` };
+    }
+    ctx.setTheme(found);
+    return { ok: true, output: `theme is ${found.id}` };
+  },
+};
+
 const checkpoints: Command = {
   name: "checkpoints",
   summary: "git snapshots taken before edits",
@@ -187,7 +214,7 @@ const clear: Command = {
 };
 
 export const COMMANDS: Command[] = [
-  help, context, restore, sessions, resumeCmd, checkpoints, model, clear,
+  help, context, restore, sessions, resumeCmd, checkpoints, model, themeCmd, clear,
 ];
 
 export function isCommand(input: string): boolean {

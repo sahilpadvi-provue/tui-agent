@@ -17,6 +17,7 @@
  */
 
 import type { ComponentType, ReactNode } from "react";
+import type { Paint } from "../theme/index.ts";
 
 export type Color =
   | "black" | "red" | "green" | "yellow" | "blue"
@@ -52,7 +53,7 @@ export type BoxProps = {
   padX?: number;
   /** A rule above and below, not a full box. */
   border?: boolean;
-  borderColor?: string;
+  borderColor?: Paint;
   borderDim?: boolean;
   /** "between" pushes the last child to the right edge. */
   align?: "start" | "end" | "between";
@@ -60,8 +61,8 @@ export type BoxProps = {
 
 export type TextProps = {
   children?: ReactNode;
-  color?: Color | string;
-  bg?: string;
+  color?: Paint;
+  bg?: Paint;
   dim?: boolean;
   bold?: boolean;
   italic?: boolean;

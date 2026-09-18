@@ -25,6 +25,7 @@ import { App, type SessionChoice } from "../src/ui/App.tsx";
 import { mount } from "../src/ui/primitives.tsx";
 import { screen } from "./vt.ts";
 import type { AgentEvent } from "../src/core/events.ts";
+import { dark } from "../src/theme/index.ts";
 
 let failures = 0;
 const check = (name: string, ok: boolean, detail = "") => {
@@ -120,7 +121,7 @@ const vt = screen(96, 30);
 const ran: string[] = [];
 let seed: readonly AgentEvent[] | undefined;
 const render = () => (
-  <App bus={new EventBus()} cwd={ws} model="scripted" version="0" backend="b" sandbox="off"
+  <App theme={dark} bus={new EventBus()} cwd={ws} model="scripted" version="0" backend="b" sandbox="off"
        busy={false} sessions={sessions} seed={seed}
        onSubmit={() => {}} onCommand={(c) => ran.push(c)}
        onCancel={() => {}} onPermission={() => {}} />

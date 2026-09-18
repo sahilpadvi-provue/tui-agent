@@ -17,6 +17,7 @@ import type {
   Backend, Color, Instance, Key, MountOptions as BackendMountOptions, SettledProps,
 } from "./backend.ts";
 import { cellsBackend } from "./backends/cells.tsx";
+import type { Paint } from "../theme/index.ts";
 
 export type { Color, Instance, Key };
 
@@ -39,7 +40,7 @@ export type StackProps = {
    *  value the UI asks for is "y", which is what a rule already is. */
   border?: boolean;
   borderSides?: "all" | "y";
-  borderColor?: string;
+  borderColor?: Paint;
   borderDim?: boolean;
   /** "between" pushes the last child to the right edge. */
   align?: "start" | "end" | "between";
@@ -52,8 +53,8 @@ export function Stack({ borderSides: _ignored, children, ...rest }: StackProps) 
 
 export type LabelProps = {
   children?: ReactNode;
-  color?: Color | string;
-  bg?: string;
+  color?: Paint;
+  bg?: Paint;
   dim?: boolean;
   bold?: boolean;
   italic?: boolean;

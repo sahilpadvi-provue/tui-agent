@@ -20,6 +20,7 @@ import { radiusLines } from "../permissions/policy.ts";
 import { COMMANDS, isCommand } from "../commands/registry.ts";
 import type { EventBus } from "../core/bus.ts";
 import type { AgentEvent, PermissionDecision } from "../core/events.ts";
+import type { Theme } from "../theme/index.ts";
 
 /**
  * A session as the picker shows it. Display rows rather than `SessionSummary`,
@@ -54,6 +55,11 @@ export type AppProps = {
   seed?: readonly AgentEvent[];
   /** Pre-fills the composer. `--resume` with no id uses it to open the picker. */
   initialInput?: string;
+  /**
+   * What the colours mean. Data, like `busy` and `branch`: the screen asks for
+   * `theme.error` and never learns that it is red.
+   */
+  theme: Theme;
 };
 
 /**
@@ -68,7 +74,7 @@ export type AppProps = {
 export function App({
   bus, cwd, model, version, backend, sandbox, branch,
   onSubmit, onCommand, onCancel, onPermission, busy,
-  sessions = [], seed, initialInput,
+  sessions = [], seed, initialInput, theme,
 }: AppProps) {
   const [state, dispatch] = useReducer(reduce, initialState);
   const [input, setInput] = useState(initialInput ?? "");
@@ -482,7 +488,7 @@ export function App({
   // and the one before it.
   const settledCount = countSettled(state.items);
   const banner = useMemo(
-    () => bannerLines({ version, model, backend, sandbox, cwd: shortenPath(cwd, term - 6) }),
+    () => bannerLines({ version, model, backend, sandbox, cwd: shortenPath(cwd, term - 6), theme }),
     [version, model, backend, sandbox, cwd, term],
   );
   /**
@@ -507,14 +513,14 @@ export function App({
   if (printed.current.length === 0) printed.current = [...banner];
   if (settledCount > consumed.current) {
     const fresh = state.items.slice(consumed.current, settledCount);
-    printed.current = [...printed.current, ...renderRun(fresh, term, lastKindRef.current)];
+    printed.current = [...printed.current, ...renderRun(fresh, term, lastKindRef.current, theme)];
     lastKindRef.current = state.items[settledCount - 1]?.kind ?? lastKindRef.current;
     consumed.current = settledCount;
   }
   const settled = printed.current;
 
   const lastSettled = state.items[settledCount - 1]?.kind ?? null;
-  const live = renderRun(state.items.slice(settledCount), term, lastSettled);
+  const live = renderRun(state.items.slice(settledCount), term, lastSettled, theme);
 
   const where = branch ? `${basename(cwd)} ${branch}` : basename(cwd);
   const usage = `${sandbox}  \u00b7  ${fmt(state.usage.input)}\u2191 ${fmt(state.usage.output)}\u2193`;
@@ -548,11 +554,11 @@ export function App({
   return (
     <>
 
-      <Settled items={settled} render={(line, i) => <Row key={i} line={line} />} />
+      <Settled items={settled} render={(line, i) => <Row key={i} line={line} theme={theme} />} />
 
       <Stack direction="column">
         {live.map((l, i) => (
-          <Row key={`live-${i}`} line={l} />
+          <Row key={`live-${i}`} line={l} theme={theme} />
         ))}
 
         {state.items.length > 0 && <Label> </Label>}
@@ -561,7 +567,7 @@ export function App({
           <Stack direction="row" padX={GUTTER}>
             <Label dim>{"\u00b7 "}</Label>
             <Label bold>
-              {shimmer("working", phase).map((sp, i) => (
+              {shimmer("working", phase, theme.shimmer).map((sp, i) => (
                 <Label key={i} color={sp.color}>{sp.text}</Label>
               ))}
             </Label>
@@ -586,14 +592,14 @@ export function App({
             padX={GUTTER}
             border
             borderSides="y"
-            borderColor={arriving > 0 && (ARRIVAL_STEPS - arriving) % 4 < 2 ? "white" : "yellow"}
+            borderColor={arriving > 0 && (ARRIVAL_STEPS - arriving) % 4 < 2 ? theme.text : theme.warning}
           >
             {/* The tool's name is what the transcript two rows up already
                 says, and it is not what is being decided. The command is. */}
             <Label>
-              <Label bold color="yellow">{"approve  "}</Label>
+              <Label bold color={theme.warning}>{"approve  "}</Label>
               {state.pending.radius.command
-                ? highlightCommand(clip(state.pending.radius.command, term - 14))
+                ? highlightCommand(clip(state.pending.radius.command, term - 14), theme)
                     .map((sp, i) => (
                       <Label key={i} color={sp.color} dim={sp.dim}>{sp.text}</Label>
                     ))
@@ -615,12 +621,12 @@ export function App({
             border
             borderSides="y"
             borderDim={!confirmQuit}
-            borderColor={confirmQuit ? "yellow" : undefined}
+            borderColor={confirmQuit ? theme.warning : undefined}
           >
             {confirmQuit ? (
               <Stack direction="row">
-                <Label color="yellow">{"! "}</Label>
-                <Label color="yellow">ctrl-c again to exit, any key to stay</Label>
+                <Label color={theme.warning}>{"! "}</Label>
+                <Label color={theme.warning}>ctrl-c again to exit, any key to stay</Label>
               </Stack>
             ) : (
               composerRows(input, cursor, chipLabel).map((row, r) => (
@@ -633,8 +639,8 @@ export function App({
                     {row.pieces.map((piece, i) => (
                       <Label
                         key={i}
-                        bg={piece.cursor ? CURSOR : undefined}
-                        color={piece.cursor ? "black" : undefined}
+                        bg={piece.cursor ? theme.cursor : undefined}
+                        color={piece.cursor ? theme.cursorText : undefined}
                       >
                         {piece.text}
                       </Label>
@@ -650,7 +656,7 @@ export function App({
                         dim does not -- dim white is still close to white on
                         many themes. */}
                     {input === "" && (
-                      <Label color="gray">
+                      <Label color={theme.muted}>
                         {busy ? " type to queue the next instruction" : " describe a change, or ask about the code"}
                       </Label>
                     )}
@@ -667,11 +673,11 @@ export function App({
               const on = i === selected;
               return (
                 <Label key={s.id}>
-                  <Label color={on ? "cyan" : undefined}>{on ? "\u203a " : "  "}</Label>
-                  <Label bg={on ? BAND : undefined} color="cyan" bold={on}>
+                  <Label color={on ? theme.name : undefined}>{on ? "\u203a " : "  "}</Label>
+                  <Label bg={on ? theme.band : undefined} color={theme.name} bold={on}>
                     {s.id.padEnd(ID_COLUMN)}
                   </Label>
-                  <Label bg={on ? BAND : undefined} dim={!on}>
+                  <Label bg={on ? theme.band : undefined} dim={!on}>
                     {clip(s.label, term - GUTTER - ID_COLUMN - 4)}
                   </Label>
                 </Label>
@@ -690,10 +696,10 @@ export function App({
               return (
                 <Label key={c.name}>
                   <Label>{on ? "\u203a " : "  "}</Label>
-                  <Label bg={on ? BAND : undefined} color="cyan" bold={on}>
+                  <Label bg={on ? theme.band : undefined} color={theme.name} bold={on}>
                     {`/${c.name}${c.takes ? ` ${c.takes}` : ""}`.padEnd(NAME_COLUMN)}
                   </Label>
-                  <Label bg={on ? BAND : undefined} dim={!on}>
+                  <Label bg={on ? theme.band : undefined} dim={!on}>
                     {clip(c.summary, term - GUTTER - NAME_COLUMN - 4)}
                   </Label>
                 </Label>
@@ -744,12 +750,6 @@ export function App({
   );
 }
 
-/** One step off the terminal's own background: enough to read as a field. */
-const BAND = "#2a2a2a";
-
-/** Light enough to read as the terminal's own cursor rather than a highlight. */
-const CURSOR = "#c8c8c8";
-
 /** Two pulses of the border, then done. Eight quanta is a little over half a second. */
 const ARRIVAL_STEPS = 8;
 
@@ -771,8 +771,16 @@ const KEY_COLUMN = 18;
  */
 const SHIMMER_MS = TICK_MS;
 
-/** The live frame is redrawn on every keystroke, so the list is capped. */
-const PALETTE_ROWS = 8;
+/**
+ * The live frame is redrawn on every keystroke, so the list is capped.
+ *
+ * It must stay at least as large as the number of commands, or typing `/` shows
+ * some of what you can do and silently hides the rest. Adding `/theme` took the
+ * count to nine and dropped `/clear` off the end; `commands-check` asserts the
+ * relationship now rather than the number, so the next command fails a gate
+ * instead of disappearing.
+ */
+export const PALETTE_ROWS = 12;
 
 /**
  * How long a permission key is ignored for after typing or after the prompt.
@@ -793,7 +801,7 @@ const PALETTE_ROWS = 8;
 const DECIDE_GUARD_MS = 250;
 
 /** The one place a depth becomes columns. */
-function Row({ line }: { line: L }) {
+function Row({ line, theme }: { line: L; theme: Theme }) {
   const pad = " ".repeat(GUTTER + (line.depth ?? 0) * STEP);
   // A rule carries no text, so it has to be handled before the blank-row
   // guard below -- otherwise it renders as an empty line.
@@ -802,13 +810,13 @@ function Row({ line }: { line: L }) {
   }
   // An empty Text renders no row at all, so a blank line is a single space.
   if (!line.text) return <Label> </Label>;
-  if (line.md) return <Markdown line={line.text} indent={pad} color={line.color} dim={line.dim} />;
+  if (line.md) return <Markdown line={line.text} indent={pad} color={line.color} dim={line.dim} theme={theme} />;
   if (line.band) {
     return (
-      <Label bg={BAND}>
+      <Label bg={line.band}>
         {pad}
         {(line.spans ?? [{ text: line.text }]).map((sp, i) => (
-          <Label key={i} bg={BAND} color={sp.color} bold={sp.bold} dim={sp.dim}>
+          <Label key={i} bg={line.band} color={sp.color} bold={sp.bold} dim={sp.dim}>
             {sp.text}
           </Label>
         ))}
@@ -870,7 +878,12 @@ function gapBefore(prev: ViewItem["kind"] | null, next: ViewItem["kind"]): numbe
   return 0;
 }
 
-function renderRun(items: ViewItem[], term: number, startingAfter: ViewItem["kind"] | null): L[] {
+function renderRun(
+  items: ViewItem[],
+  term: number,
+  startingAfter: ViewItem["kind"] | null,
+  theme: Theme,
+): L[] {
   const out: L[] = [];
   let prev = startingAfter;
   for (const item of items) {
@@ -880,7 +893,7 @@ function renderRun(items: ViewItem[], term: number, startingAfter: ViewItem["kin
       out.push(BLANK, { text: "", rule: true, width: term }, BLANK);
     }
     for (let i = 0; i < gapBefore(prev, item.kind); i++) out.push(BLANK);
-    out.push(...renderItem(item, term));
+    out.push(...renderItem(item, term, theme));
     prev = item.kind;
   }
   return out;
@@ -911,7 +924,7 @@ export function countSettled(items: ViewItem[]): number {
   return lastIsLive ? items.length - 1 : items.length;
 }
 
-function renderItem(i: ViewItem, term: number): L[] {
+function renderItem(i: ViewItem, term: number, theme: Theme): L[] {
   switch (i.kind) {
     // The request is the loudest thing on screen: it is what everything below
     // it is answering, and the eye should find it without searching.
@@ -925,7 +938,7 @@ function renderItem(i: ViewItem, term: number): L[] {
           n === 0 ? { text: "\u203a " } : { text: "  " },
           { text: t },
         ),
-        band: true,
+        band: theme.band,
         width: term,
       }));
     }
@@ -934,7 +947,7 @@ function renderItem(i: ViewItem, term: number): L[] {
       return wrap(i.text, measureAt(DEPTH.said, term)).map((t) => ({
         text: t,
         depth: DEPTH.said,
-        md: true,
+        md: theme.name,
       }));
 
     case "reasoning":
@@ -972,7 +985,7 @@ function renderItem(i: ViewItem, term: number): L[] {
         : "~";
       // Running is not a name, and cyan means a name. The mark recedes until
       // it can say something: the shimmer two rows down already says alive.
-      const markColor = i.running ? undefined : i.ok === false ? "red" : "green";
+      const markColor = i.running ? undefined : i.ok === false ? theme.error : theme.success;
       const verb = verbFor(i.name);
       const summary = i.args !== undefined ? summariseCall(i.name, i.args) : "";
       const room = w - mark.length - verb.length - 3;
@@ -981,11 +994,11 @@ function renderItem(i: ViewItem, term: number): L[] {
         styled(
           DEPTH.did,
           { text: `${mark} `, color: markColor, dim: i.running },
-          { text: verb, bold: true, color: i.ok === false ? "red" : undefined },
+          { text: verb, bold: true, color: i.ok === false ? theme.error : undefined },
           ...(shown
             ? i.name === "shell"
-              ? [{ text: " " }, ...highlightCommand(shown)]
-              : [{ text: ` ${shown}`, color: "cyan" as const }]
+              ? [{ text: " " }, ...highlightCommand(shown, theme)]
+              : [{ text: ` ${shown}`, color: theme.name }]
             : []),
         ),
       ];
@@ -1017,7 +1030,7 @@ function renderItem(i: ViewItem, term: number): L[] {
       return wrap(i.text, measureAt(DEPTH.did, term) - 2).map((t, n) => ({
         text: (n === 0 ? "\u2717 " : "  ") + t,
         depth: DEPTH.did,
-        color: "red" as const,
+        color: theme.error,
       }));
 
     case "compaction":
@@ -1033,8 +1046,8 @@ function renderItem(i: ViewItem, term: number): L[] {
       const out: L[] = [
         styled(
           DEPTH.did,
-          { text: "\u203a ", color: i.ok ? undefined : "red" },
-          { text: `/${i.command}`, bold: true, color: i.ok ? undefined : "red" },
+          { text: "\u203a ", color: i.ok ? undefined : theme.error },
+          { text: `/${i.command}`, bold: true, color: i.ok ? undefined : theme.error },
           i.args ? { text: ` ${clip(i.args, w - i.command.length - 4)}`, dim: true } : null,
         ),
       ];

@@ -5,6 +5,7 @@ import { PassThrough } from "node:stream";
 import { Writable } from "node:stream";
 import { EventBus } from "../src/core/bus.ts";
 import { App } from "../src/ui/App.tsx";
+import { dark } from "../src/theme/index.ts";
 
 const MESSAGES = Number(process.env.MESSAGES ?? 500);
 const TOKENS = Number(process.env.TOKENS ?? 2000);
@@ -19,7 +20,7 @@ const stdin = Object.assign(new PassThrough(), { isTTY: true, setRawMode() {}, r
 
 const bus = new EventBus();
 const app = mount(
-  <App bus={bus} cwd="/tmp/bench" model="bench" version="0.1.0" backend="ollama" sandbox="seatbelt" branch="main" busy={true}
+  <App theme={dark} bus={bus} cwd="/tmp/bench" model="bench" version="0.1.0" backend="ollama" sandbox="seatbelt" branch="main" busy={true}
        onSubmit={() => {}} onCommand={() => {}} onCancel={() => {}} onPermission={() => {}} />,
   { stdout: stdout as any, stdin: stdin as any, onRender: () => { frames++; } },
 );

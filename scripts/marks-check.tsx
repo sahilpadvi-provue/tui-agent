@@ -15,6 +15,7 @@ import { mount } from "../src/ui/primitives.tsx";
 import { EventBus } from "../src/core/bus.ts";
 import { App } from "../src/ui/App.tsx";
 import { screen } from "./vt.ts";
+import { dark } from "../src/theme/index.ts";
 
 let failures = 0;
 const check = (name: string, ok: boolean, detail = "") => {
@@ -30,7 +31,7 @@ async function marks(
   const view = screen(92, 30);
   const bus = new EventBus();
   const app = mount(
-    <App bus={bus} cwd="/p" model="m" version="0" backend="b" sandbox="off" branch="main"
+    <App theme={dark} bus={bus} cwd="/p" model="m" version="0" backend="b" sandbox="off" branch="main"
          busy={false} onSubmit={() => {}} onCommand={() => {}} onCancel={() => {}}
          onPermission={() => {}} />,
     { stdout: view.stdout, stdin: view.stdin },

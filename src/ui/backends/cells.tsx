@@ -22,6 +22,7 @@ import { createRoot, reconciler, toLines, type Root } from "../render/host.ts";
 import { paint, cellAt, type Screen } from "../render/screen.ts";
 import { renderFrame, HIDE_CURSOR, SHOW_CURSOR } from "../render/diff.ts";
 import { Parser, ENABLE_PASTE, DISABLE_PASTE } from "../render/input.ts";
+import type { Paint } from "../../theme/index.ts";
 
 declare module "react" {
   namespace JSX {
@@ -31,14 +32,14 @@ declare module "react" {
         direction?: "row" | "column";
         padX?: number;
         border?: boolean;
-        borderColor?: string;
+        borderColor?: Paint;
         borderDim?: boolean;
         align?: "start" | "end" | "between";
       };
       "tui-text": {
         children?: ReactNode;
-        color?: string;
-        bg?: string;
+        color?: Paint;
+        bg?: Paint;
         dim?: boolean;
         bold?: boolean;
         italic?: boolean;

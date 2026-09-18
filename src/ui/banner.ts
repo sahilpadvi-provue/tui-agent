@@ -1,4 +1,5 @@
 import { styled, type Line } from "./layout.ts";
+import type { Theme } from "../theme/index.ts";
 
 /**
  * What is running, before anything has happened.
@@ -17,13 +18,14 @@ export function bannerLines(o: {
   backend: string;
   sandbox: string;
   cwd: string;
+  theme: Theme;
 }): Line[] {
   const label = (text: string) => ({ text: text.padEnd(10), dim: true });
 
   return [
     styled(
       0,
-      { text: "● ", color: "green" },
+      { text: "● ", color: o.theme.success },
       { text: "tui-agent", bold: true },
       { text: `  ${o.version}`, dim: true },
     ),

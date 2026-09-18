@@ -32,7 +32,13 @@ early compaction for testing.
 
 `NO_MOTION=1` suppresses decorative animation, on `NO_COLOR`'s rule: present
 and non-empty is enough, whatever the value. The elapsed clock keeps counting,
-because a number that stops is not calmer.
+because a number that stops is not calmer. `NO_COLOR=1` does the same for
+colour, and deliberately not for weight: the secondary tier here rests on dim,
+so dropping it would collapse three tiers into one.
+
+`THEME=dark` or `THEME=light` picks a theme, and `/theme` switches one mid
+session. A name that is not a theme falls back rather than failing, because a
+typo in a shell profile is not a reason to refuse to start.
 
 `MODEL=<name>` overrides the Ollama model.
 
@@ -129,6 +135,28 @@ must not be able to take `ctrl-c` away.
 A multi-line paste is still a single `[Pasted text #1 +13 lines]` chip rather
 than rows: one deliberate line break is not a block worth collapsing, and a
 pasted stack trace is.
+
+## Themes
+
+A component asks for a meaning, not a colour: `theme.error`, never `"red"`. The
+roles are the ones the palette settled on — `name` for a path or a command,
+`success`, `error`, `warning`, `muted` for chrome, `text` for whatever the
+terminal's own foreground is — plus `band`, `cursor` and `cursorText`.
+
+There are two themes and they differ in three values, which is the design
+rather than a limitation. A named colour in a terminal is a slot the user's own
+theme fills, so asking for `cyan` inherits the palette they configured while
+asking for `#89dceb` overrides it on every path on screen. Both themes use
+slots wherever the terminal already has an opinion, and exact values only for
+the three places it does not.
+
+The type keeps the other answer available: a theme can answer a role with an
+exact colour instead, and neither the renderer nor the role vocabulary changes
+when one does.
+
+Nothing in `src/theme/` knows what a terminal is. `render/screen.ts` turns a
+role's value into SGR and `backends/ink.tsx` turns the same value into Ink's
+props — the same model, two renderers, which is the point.
 
 ## Sessions
 
@@ -243,6 +271,7 @@ is what proves the boundary held.
 | Checkpoint restores a damaged file | `bun run scripts/checkpoint-check.ts` | passing |
 | Every renderer backend draws the same screen | `bun run backend:check` | passing |
 | One shared clock, and none when nothing animates | `bun run clock:check` | passing |
+| The screen asks the theme, and `/theme` switches it | `bun run theme:check` | passing |
 
 ## Editing with small models
 

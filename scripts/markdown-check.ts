@@ -13,6 +13,7 @@
  */
 import { paint } from "../src/ui/render/screen.ts";
 import { renderFrame } from "../src/ui/render/diff.ts";
+import { slot } from "../src/theme/index.ts";
 
 let failures = 0;
 const check = (name: string, ok: boolean, detail = "") => {
@@ -20,7 +21,7 @@ const check = (name: string, ok: boolean, detail = "") => {
   if (!ok) failures++;
 };
 
-const frame = (text: string) => renderFrame(null, paint([{ text, depth: 0, md: true } as never], 60), 6);
+const frame = (text: string) => renderFrame(null, paint([{ text, depth: 0, md: slot("cyan") } as never], 60), 6);
 const plain = (s: string) => s.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "").trim();
 /**
  * The styling in force where `word` is drawn.

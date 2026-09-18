@@ -18,6 +18,7 @@ import { render, Box, Text, Static } from "ink";
 import { paint, type Screen } from "../src/ui/render/screen.ts";
 import { renderFrame, HIDE_CURSOR, SHOW_CURSOR } from "../src/ui/render/diff.ts";
 import { BLANK, DEPTH, GUTTER, STEP, styled, type Line } from "../src/ui/layout.ts";
+import { rgb, slot } from "../src/theme/index.ts";
 
 const useInk = process.argv.includes("--ink");
 const frameArg = process.argv.indexOf("--frames");
@@ -32,7 +33,7 @@ const rows = () => process.stdout.rows ?? 24;
  * rewritten.
  */
 const settled: Line[] = [
-  styled(DEPTH.said, { text: "› ", color: "cyan" }, { text: "add a health endpoint" }),
+  styled(DEPTH.said, { text: "› ", color: slot("cyan") }, { text: "add a health endpoint" }),
   BLANK,
 ];
 
@@ -51,9 +52,9 @@ function advance(n: number): void {
     { text: `thought for ${300 + n * 37} chars`, depth: DEPTH.did, dim: true },
     styled(
       DEPTH.did,
-      { text: "✓ ", color: "green" },
+      { text: "✓ ", color: slot("green") },
       { text: tool[0]!, bold: true },
-      { text: ` ${tool[1]!}`, color: "cyan" },
+      { text: ` ${tool[1]!}`, color: slot("cyan") },
     ),
     { text: `└ ${"ok".padEnd(4)} ${n + 1} of many`, depth: DEPTH.detail, dim: true },
   );
@@ -64,9 +65,9 @@ function live(term: number, tick: number): Line[] {
   return [
     { text: "thinking…", depth: DEPTH.did, dim: true },
     BLANK,
-    styled(DEPTH.did, { text: "· ", color: "cyan" }, { text: `working  ${tick}s · esc to interrupt`, dim: true }),
+    styled(DEPTH.did, { text: "· ", color: slot("cyan") }, { text: `working  ${tick}s · esc to interrupt`, dim: true }),
     BLANK,
-    styled(0, { text: "› ", color: "cyan" }, { text: "type to queue the next instruction", dim: true }),
+    styled(0, { text: "› ", color: slot("cyan") }, { text: "type to queue the next instruction", dim: true }),
     styled(0, { text: `qwen3:8b  ·  demo  ·  ${term} cols`, dim: true }),
   ];
 }

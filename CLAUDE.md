@@ -57,6 +57,7 @@ Most diffs add zero comments. Do not comment code you did not otherwise change.
 ## Code style
 
 - No `any`. Narrow the type. `noUncheckedIndexedAccess` is on — handle the `undefined`.
+- Never name a colour in a component. Ask the theme for a role: `theme.error`, not `"red"`. `src/theme/` is the vocabulary and it knows nothing about terminals.
 - Never measure text with `.length`. Use `displayWidth` / `sliceToWidth` from `src/ui/layout.ts`: an emoji is two code units and two columns, a CJK ideograph is one and two.
 - Import `RefObject` / `ReactNode` directly from `"react"`, never via `React.*`.
 - Files and directories kebab-case; components PascalCase inside. `.tsx` only where JSX is used.
@@ -113,7 +114,7 @@ bun run sessions list|context|restore|checkpoints
 bun x tsc --noEmit                           # run on every change
 ```
 
-Flags: `--no-sandbox` disables OS containment, `CONTEXT_WINDOW=3000` forces early compaction, `MODEL=<name>` picks the Ollama model, `NO_MOTION=1` suppresses decorative animation.
+Flags: `--no-sandbox` disables OS containment, `CONTEXT_WINDOW=3000` forces early compaction, `MODEL=<name>` picks the Ollama model, `NO_MOTION=1` suppresses decorative animation, `NO_COLOR=1` suppresses colour but not weight, `THEME=light` picks a theme.
 
 Ollama must be running (`ollama serve`) with the model pulled. Only one model fits in memory at a time; never run two.
 
@@ -146,6 +147,7 @@ bun run changed:check                                  # what a call changed rea
 bun run width:check                                    # width is columns, not code units
 bun run permission:check                               # a stray keystroke cannot approve a tool
 bun run clock:check                                    # one shared clock, and none when nothing moves
+bun run theme:check                                    # the screen asks the theme, and /theme switches it
 ```
 
 ## Attribution

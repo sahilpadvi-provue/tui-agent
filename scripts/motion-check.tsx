@@ -18,6 +18,7 @@ import { EventBus } from "../src/core/bus.ts";
 import { App } from "../src/ui/App.tsx";
 import { clockRunning } from "../src/ui/clock.ts";
 import { screen } from "./vt.ts";
+import { dark } from "../src/theme/index.ts";
 
 const suppressed = (process.env["NO_MOTION"] ?? "") !== "";
 let failures = 0;
@@ -43,7 +44,7 @@ async function observe(
   const view = screen(80, 24);
   const bus = new EventBus();
   const app = mount(
-    <App bus={bus} cwd="/p" model="m" version="0" backend="b" sandbox="off" branch="main"
+    <App theme={dark} bus={bus} cwd="/p" model="m" version="0" backend="b" sandbox="off" branch="main"
          busy={busy} onSubmit={() => {}} onCommand={() => {}} onCancel={() => {}}
          onPermission={() => {}} />,
     { stdout: view.stdout, stdin: view.stdin },

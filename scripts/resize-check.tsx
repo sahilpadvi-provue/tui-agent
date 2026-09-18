@@ -23,7 +23,7 @@ const stdout = vt.stdout as unknown as { columns: number; emit(e: string): void 
 
 const bus = new EventBus();
 const app = mount(
-  <App bus={bus} cwd="/tmp/demo" model="m" version="0" backend="b" sandbox="off" busy={false}
+  <App theme={dark} bus={bus} cwd="/tmp/demo" model="m" version="0" backend="b" sandbox="off" busy={false}
        onSubmit={() => {}} onCommand={() => {}} onCancel={() => {}} onPermission={() => {}} />,
   { stdout: vt.stdout, stdin: vt.stdin },
 );
@@ -93,6 +93,7 @@ check("the composer still redraws after a resize", afterWide.includes("describe 
 
 import { reduce, initialState } from "../src/ui/model.ts";
 import type { AgentEvent } from "../src/core/events.ts";
+import { dark } from "../src/theme/index.ts";
 
 let state = initialState;
 const apply = (e: Partial<AgentEvent> & { type: string }) =>

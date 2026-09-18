@@ -4,6 +4,7 @@
  */
 import React, { useEffect, useState } from "react";
 import { Stack, Label, Settled, mount } from "../src/ui/primitives.tsx";
+import { slot } from "../src/theme/index.ts";
 
 let buf = "";
 const out: any = Object.assign(
@@ -17,7 +18,7 @@ function Demo({ tick }: { tick: number }) {
       <Settled items={["one", "two"]} render={(t, i) => <Label key={i} dim>{`  ${t}`}</Label>} />
       <Stack direction="column">
         <Stack direction="row" padX={2}>
-          <Label color="cyan">{"· "}</Label>
+          <Label color={slot("cyan")}>{"· "}</Label>
           <Label bold>working</Label>
           <Label dim>{`  ${tick}s`}</Label>
         </Stack>

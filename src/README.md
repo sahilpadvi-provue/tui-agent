@@ -9,7 +9,8 @@ The layers, innermost first. Each depends only on the ones above it in this list
 | `tools/` | Tool registry and the built-in tools | `exec/` |
 | `model/` | What the loop needs from a model, and the Ollama adapter | `core/projection` for message shape |
 | `permissions/` | Tiered policy and category deny rules | `core/events`, `tools/` |
-| `ui/` | The terminal client | `core/` (events only), `permissions/` for display |
+| `theme/` | What a colour means, with no idea what a terminal is | nothing |
+| `ui/` | The terminal client | `core/` (events only), `theme/`, `permissions/` for display |
 | `commands/` | Slash commands the user runs, as opposed to tools the model calls | `core/`, `exec/` |
 | `cli/` | Entry points that wire the above together | everything |
 

@@ -12,7 +12,7 @@
  * into the terminal's own scrollback and is deliberately unreachable.
  */
 
-import type { Color } from "../backend.ts";
+import type { Paint, Slot } from "../../theme/index.ts";
 import { GUTTER, STEP, charWidth, type Line, type Span } from "../layout.ts";
 import { blockStyle, segments } from "../markdown.tsx";
 import { FILL } from "./host.ts";
@@ -40,11 +40,28 @@ export function sameCell(a: Cell, b: Cell): boolean {
   return a.char === b.char && a.sgr === b.sgr;
 }
 
-const FG: Record<string, number> = {
-  black: 30, red: 31, green: 32, yellow: 33,
-  blue: 34, magenta: 35, cyan: 36, white: 37,
-  gray: 90, grey: 90,
+/**
+ * A slot's foreground code. Background is the same plus ten, which is what
+ * ANSI already says, so there is one table rather than two.
+ *
+ * This is the whole of the terminal's half of the colour model: everything
+ * above speaks roles, everything from here down speaks codes.
+ */
+const SLOT: Record<Slot, number> = {
+  red: 31, green: 32, yellow: 33, blue: 34, magenta: 35, cyan: 36, grey: 90,
 };
+
+/**
+ * `NO_COLOR`'s rule: present and non-empty suppresses, whatever the value.
+ *
+ * A capability, not a theme. `/theme` decides what the colours mean; this
+ * decides whether any of them reach the terminal, and keeping the two apart is
+ * what makes both testable on their own.
+ *
+ * Colour only. This UI's secondary tier rests on `dim`, so suppressing weight
+ * as well would collapse three tiers into one and take the hierarchy with it.
+ */
+const NO_COLOUR = (process.env["NO_COLOR"] ?? "") !== "";
 
 function rgb(hex: string): [number, number, number] | null {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex);
@@ -94,9 +111,17 @@ function extended(layer: 38 | 48, c: [number, number, number]): string {
  * save, but it makes a cell self-describing, which is what lets the diff
  * repaint any single cell without knowing what was drawn before it.
  */
+/** A `Paint` as this terminal says it, or nothing when it has no opinion. */
+function code(p: Paint, layer: 38 | 48): number | string | undefined {
+  if (p.kind === "inherit") return undefined;
+  if (p.kind === "slot") return layer === 38 ? SLOT[p.slot] : SLOT[p.slot] + 10;
+  const c = rgb(p.hex);
+  return c === null ? undefined : extended(layer, c);
+}
+
 function sgrFor(style: {
-  color?: Color | string;
-  bg?: string;
+  color?: Paint;
+  bg?: Paint;
   dim?: boolean;
   bold?: boolean;
   italic?: boolean;
@@ -105,17 +130,15 @@ function sgrFor(style: {
   if (style.bold) codes.push(1);
   if (style.dim) codes.push(2);
   if (style.italic) codes.push(3);
-  if (style.color) {
-    const named = FG[style.color];
-    if (named !== undefined) codes.push(named);
-    else {
-      const c = rgb(style.color);
-      if (c) codes.push(extended(38, c));
+  if (!NO_COLOUR) {
+    if (style.color) {
+      const c = code(style.color, 38);
+      if (c !== undefined) codes.push(c);
     }
-  }
-  if (style.bg) {
-    const c = rgb(style.bg);
-    if (c) codes.push(extended(48, c));
+    if (style.bg) {
+      const c = code(style.bg, 48);
+      if (c !== undefined) codes.push(c);
+    }
   }
   return codes.length === 0 ? "" : `\x1b[${codes.join(";")}m`;
 }
@@ -175,20 +198,20 @@ function lineCells(line: Line, width: number): Cell[] {
   // asterisks in the other.
   if (line.md) {
     const block = blockStyle(line.text);
-    const base = { color: line.color ?? block.color, dim: line.dim, bold: block.bold };
+    const base = { color: line.color, dim: line.dim, bold: block.bold };
     push(out, pad, sgrFor(base));
     for (const seg of segments(block.text)) {
       push(out, seg.text, sgrFor({
         ...base,
         bold: seg.bold ?? base.bold,
         italic: seg.italic,
-        color: seg.code ? "cyan" : base.color,
+        color: seg.code ? line.md : base.color,
       }));
     }
     return out;
   }
 
-  const bg = line.band ? BAND : undefined;
+  const bg = line.band;
 
   push(out, pad, sgrFor({ bg }));
 
@@ -213,9 +236,6 @@ function lineCells(line: Line, width: number): Cell[] {
   }
   return out;
 }
-
-/** One step off the terminal's own background: enough to read as a field. */
-const BAND = "#2a2a2a";
 
 /**
  * A newline is a row break, not a cell.

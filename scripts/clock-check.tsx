@@ -20,6 +20,7 @@ import { mount } from "../src/ui/primitives.tsx";
 import { clockRunning, usePhase, TICK_MS } from "../src/ui/clock.ts";
 import { screen } from "./vt.ts";
 import { Label, Stack } from "../src/ui/primitives.tsx";
+import { dark } from "../src/theme/index.ts";
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -28,7 +29,7 @@ async function frames(busy: boolean, forMs: number) {
   const vt = screen(80, 24);
   let painted = 0;
   const app = mount(
-    <App bus={new EventBus()} cwd="/tmp/demo" model="m" version="0" backend="b" sandbox="off"
+    <App theme={dark} bus={new EventBus()} cwd="/tmp/demo" model="m" version="0" backend="b" sandbox="off"
          busy={busy} onSubmit={() => {}} onCommand={() => {}} onCancel={() => {}}
          onPermission={() => {}} />,
     { stdout: vt.stdout, stdin: vt.stdin, onRender: () => { painted += 1; } },

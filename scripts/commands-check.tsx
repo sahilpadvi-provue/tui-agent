@@ -10,10 +10,11 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 import { EventBus } from "../src/core/bus.ts";
-import { App } from "../src/ui/App.tsx";
+import { App, PALETTE_ROWS } from "../src/ui/App.tsx";
 import { project } from "../src/core/projection.ts";
 import { runCommand, isCommand, COMMANDS, type CommandContext } from "../src/commands/registry.ts";
 import type { AgentEvent } from "../src/core/events.ts";
+import { dark } from "../src/theme/index.ts";
 
 let failures = 0;
 const check = (name: string, ok: boolean, detail = "") => {
@@ -26,6 +27,7 @@ let switched = "";
 let cleared = false;
 let restored: number[] = [];
 let resumed: string | null = null;
+let themed: string | null = null;
 
 const history: AgentEvent[] = [
   { seq: 0, at: "", sessionId: "s", type: "message.started", id: "u", role: "user" },
@@ -43,6 +45,8 @@ const ctx: CommandContext = {
   clear: () => { cleared = true; },
   restore: (s) => { restored = s; },
   resume: (id) => { resumed = id; },
+  theme: "dark" as const,
+  setTheme: (t) => { themed = t.id; },
 };
 
 const help = await runCommand("/help", ctx);
@@ -81,7 +85,7 @@ check("commands never enter the model's conversation",
 const vt = screen(92, 30);
 const bus = new EventBus();
 const app = mount(
-  <App bus={bus} cwd={ws} model="m" version="0" backend="b" sandbox="off" busy={false}
+  <App theme={dark} bus={bus} cwd={ws} model="m" version="0" backend="b" sandbox="off" busy={false}
        onSubmit={() => {}} onCommand={() => {}} onCancel={() => {}} onPermission={() => {}} />,
   { stdout: vt.stdout, stdin: vt.stdin },
 );
@@ -106,7 +110,7 @@ async function afterTyping(typed: string, width = 100) {
   const vt = screen(width, 30);
   const b = new EventBus();
   const a = mount(
-    <App bus={b} cwd={ws} model="m" version="0" backend="b" sandbox="off" busy={false}
+    <App theme={dark} bus={b} cwd={ws} model="m" version="0" backend="b" sandbox="off" busy={false}
          onSubmit={() => {}} onCommand={() => {}} onCancel={() => {}} onPermission={() => {}} />,
     { stdout: vt.stdout, stdin: vt.stdin },
   );
@@ -122,6 +126,10 @@ async function afterTyping(typed: string, width = 100) {
 const all = await afterTyping("/");
 check("a slash lists every command", COMMANDS.every((c) => all.includes(`/${c.name}`)),
   COMMANDS.filter((c) => !all.includes(`/${c.name}`)).map((c) => c.name).join(", "));
+// The list is capped, so the cap has to be able to hold every command. Adding
+// one used to push the last off the end in silence.
+check("and the cap is large enough to hold them all", COMMANDS.length <= PALETTE_ROWS,
+  `${COMMANDS.length} commands, ${PALETTE_ROWS} rows`);
 check("the list explains what each one does", all.includes("what compaction hid"));
 
 const filtered = await afterTyping("/c");
@@ -153,7 +161,7 @@ async function drive(keys: string[], width = 100) {
   const vt = screen(width, 30);
   const b = new EventBus();
   const a = mount(
-    <App bus={b} cwd={ws} model="m" version="0" backend="b" sandbox="off" busy={false}
+    <App theme={dark} bus={b} cwd={ws} model="m" version="0" backend="b" sandbox="off" busy={false}
          onSubmit={(t) => prompted.push(t)} onCommand={(c) => invoked.push(c)} onCancel={() => {}} onPermission={() => {}} />,
     { stdout: vt.stdout, stdin: vt.stdin },
   );

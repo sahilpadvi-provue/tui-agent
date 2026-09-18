@@ -17,6 +17,7 @@ Gate scripts. Each one is a claim about the system that can fail loudly.
 | `width-check.ts` | Width is display columns: no split surrogate, CJK wraps, a wide glyph takes two cells |
 | `permission-check.tsx` | A keystroke meant for the composer cannot answer a permission prompt |
 | `clock-check.tsx` | Everything animating shares one timer, and an idle screen has none |
+| `theme-check.tsx` | The screen asks the theme for its colours, and `/theme` changes them |
 | `log-equivalence.tsx` | Mounting the UI changes nothing the runtime records |
 | `queue-check.tsx` | Typing is never blocked; Enter queues and the queue flushes on idle |
 | `backend-check.tsx` | Every renderer backend draws the same screen, for the synthetic tree and for the real `App` |

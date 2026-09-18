@@ -12,6 +12,7 @@ import {
   shortenPath, shimmer, highlightCommand,
   charWidth, displayWidth, sliceToWidth,
 } from "./layout.ts";
+import { dark, rgb } from "../theme/index.ts";
 
 describe("measureAt", () => {
   test("caps at the measure however wide the terminal", () => {
@@ -146,27 +147,27 @@ describe("shortenPath", () => {
 
 describe("shimmer", () => {
   test("one span per character", () => {
-    expect(shimmer("abc", 0)).toHaveLength(3);
+    expect(shimmer("abc", 0, dark.shimmer)).toHaveLength(3);
   });
   test("the character under the head is the brightest", () => {
     // Phase 0 is the head arriving from off-word, so pick a phase where it is
     // over the word. Asserting brightness at phase 0 encodes the pop instead.
-    const spans = shimmer("abc", 3 + 1);
-    expect(spans[1]?.color).toBe("#ffffff");
+    const spans = shimmer("abc", 3 + 1, dark.shimmer);
+    expect(spans[1]?.color).toEqual(rgb("#ffffff"));
   });
   test("no phase of the shimmer is flat", () => {
     // A flat frame is a static dark label, which is what the shimmer exists to
     // prevent. Seven of seventeen phases used to be one.
     const word = "working";
     for (let phase = 0; phase < 64; phase++) {
-      const shades = new Set(shimmer(word, phase).map((s) => s.color));
+      const shades = new Set(shimmer(word, phase, dark.shimmer).map((s) => s.color));
       expect(shades.size).toBeGreaterThan(1);
     }
   });
   test("the highlight arrives and leaves rather than popping", () => {
     const word = "working";
     const brightestAt = (phase: number) =>
-      shimmer(word, phase).findIndex((s) => s.color === "#ffffff");
+      shimmer(word, phase, dark.shimmer).findIndex((s) => JSON.stringify(s.color) === JSON.stringify(rgb("#ffffff")));
     // Somewhere in the cycle no character is at full brightness, because the
     // head is travelling past the end of the word.
     const phases = Array.from({ length: 13 }, (_, p) => brightestAt(p));
@@ -177,18 +178,18 @@ describe("shimmer", () => {
     const word = "working";
     const seen = new Set<number>();
     for (let phase = 0; phase < 13; phase++) {
-      const i = shimmer(word, phase).findIndex((s) => s.color === "#ffffff");
+      const i = shimmer(word, phase, dark.shimmer).findIndex((s) => JSON.stringify(s.color) === JSON.stringify(rgb("#ffffff")));
       if (i !== -1) seen.add(i);
     }
     expect(seen.size).toBe(word.length);
   });
   test("characters keep their order and text", () => {
-    expect(shimmer("hi", 0).map((s) => s.text)).toEqual(["h", "i"]);
+    expect(shimmer("hi", 0, dark.shimmer).map((s) => s.text)).toEqual(["h", "i"]);
   });
 });
 
 describe("highlightCommand", () => {
-  const text = (cmd: string) => highlightCommand(cmd).map((s) => s.text).join("");
+  const text = (cmd: string) => highlightCommand(cmd, dark).map((s) => s.text).join("");
 
   test("the reconstructed text is exactly the input", () => {
     for (const cmd of ["npm test", "ls -la  src/", "cat a | grep b"]) {
@@ -196,24 +197,26 @@ describe("highlightCommand", () => {
     }
   });
   test("the binary is tinted, once", () => {
-    const spans = highlightCommand("npm test");
-    expect(spans[0]).toEqual({ text: "npm", color: "cyan" });
+    const spans = highlightCommand("npm test", dark);
+    // Asserted as the role, not the colour: what matters is that the binary
+      // is a name, and the theme decides what a name looks like.
+      expect(spans[0]).toEqual({ text: "npm", color: dark.name });
   });
   test("a path is tinted like the binary, because both are names", () => {
-    const spans = highlightCommand("ls -la src/x");
+    const spans = highlightCommand("ls -la src/x", dark);
     const binary = spans.find((s) => s.text === "ls");
     const path = spans.find((s) => s.text === "src/x");
     expect(path?.color).toBe(binary?.color);
-    expect(path?.color).toBe("cyan");
+    expect(path?.color).toEqual(dark.name);
   });
   test("flags recede, because they are never the answer to what it touched", () => {
-    const spans = highlightCommand("ls -la src/x");
+    const spans = highlightCommand("ls -la src/x", dark);
     const flag = spans.find((s) => s.text === "-la");
     expect(flag?.dim).toBe(true);
     expect(flag?.color).toBeUndefined();
   });
   test("an operator is chrome, not a colour of its own", () => {
-    const spans = highlightCommand("cat a | wc -l");
+    const spans = highlightCommand("cat a | wc -l", dark);
     const pipe = spans.find((s) => s.text === "|");
     expect(pipe?.dim).toBe(true);
     expect(pipe?.color).toBeUndefined();

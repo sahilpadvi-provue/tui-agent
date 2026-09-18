@@ -20,8 +20,26 @@ import {
   useApp, useInput, usePaste as useInkPaste, useWindowSize,
 } from "ink";
 import type {
-  Backend, BoxProps, Instance, Key, MountOptions, SettledProps, TextProps,
+  Backend, BoxProps, Color, Instance, Key, MountOptions, SettledProps, TextProps,
 } from "../backend.ts";
+import type { Paint, Slot } from "../../theme/index.ts";
+
+/**
+ * The slot names this backend speaks. `Color` is the terminal's capability
+ * vocabulary and this is where a role, already resolved to a `Paint`, meets
+ * it -- the same boundary `render/screen.ts` crosses with SGR codes, crossed
+ * once more for the renderer that does not own the cells.
+ */
+const SLOT_NAME: Record<Slot, Color> = {
+  red: "red", green: "green", yellow: "yellow", blue: "blue",
+  magenta: "magenta", cyan: "cyan", grey: "gray",
+};
+
+/** `undefined` means inherit, which is what Ink does with an absent prop. */
+function inkColor(p: Paint | undefined): string | undefined {
+  if (p === undefined || p.kind === "inherit") return undefined;
+  return p.kind === "slot" ? SLOT_NAME[p.slot] : p.hex;
+}
 
 /**
  * `border` means a rule above and below, which Ink draws as a box with two
@@ -38,7 +56,7 @@ function Box({
       borderStyle={border ? "single" : undefined}
       borderLeft={border ? false : undefined}
       borderRight={border ? false : undefined}
-      borderColor={border ? borderColor : undefined}
+      borderColor={border ? inkColor(borderColor) : undefined}
       borderDimColor={border ? borderDim : undefined}
       justifyContent={
         align === "between" ? "space-between" : align === "end" ? "flex-end" : undefined
@@ -51,7 +69,7 @@ function Box({
 
 function Text({ children, color, bg, dim, bold, italic }: TextProps) {
   return (
-    <InkText color={color} backgroundColor={bg} dimColor={dim} bold={bold} italic={italic}>
+    <InkText color={inkColor(color)} backgroundColor={inkColor(bg)} dimColor={dim} bold={bold} italic={italic}>
       {children}
     </InkText>
   );

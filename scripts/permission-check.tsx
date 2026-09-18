@@ -18,6 +18,7 @@ import { App } from "../src/ui/App.tsx";
 import { mount } from "../src/ui/primitives.tsx";
 import { screen } from "./vt.ts";
 import type { PermissionDecision } from "../src/core/events.ts";
+import { dark } from "../src/theme/index.ts";
 
 let failures = 0;
 const check = (name: string, ok: boolean, detail = "") => {
@@ -37,7 +38,7 @@ async function ask(keys: { key: string; afterMs: number }[]) {
   const bus = new EventBus();
   const decisions: PermissionDecision[] = [];
   const app = mount(
-    <App bus={bus} cwd="/tmp/demo" model="m" version="0" backend="b" sandbox="off" busy={true}
+    <App theme={dark} bus={bus} cwd="/tmp/demo" model="m" version="0" backend="b" sandbox="off" busy={true}
          onSubmit={() => {}} onCommand={() => {}} onCancel={() => {}}
          onPermission={(d) => decisions.push(d)} />,
     { stdout: vt.stdout, stdin: vt.stdin },

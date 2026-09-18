@@ -4,6 +4,7 @@ import { mount } from "../src/ui/primitives.tsx";
 import { PassThrough, Writable } from "node:stream";
 import { EventBus } from "../src/core/bus.ts";
 import { App } from "../src/ui/App.tsx";
+import { dark } from "../src/theme/index.ts";
 
 let buf = "";
 const stdout = Object.assign(new Writable({ write(c, _e, cb) { buf += String(c); cb(); return true; } }),
@@ -11,7 +12,7 @@ const stdout = Object.assign(new Writable({ write(c, _e, cb) { buf += String(c);
 const stdin = Object.assign(new PassThrough(), { isTTY: true, setRawMode() {}, ref() {}, unref() {} });
 
 const app = mount(
-  <App bus={new EventBus()} cwd="/tmp" model="m" version="0.1.0" backend="ollama" sandbox="seatbelt" branch="main" busy={false}
+  <App theme={dark} bus={new EventBus()} cwd="/tmp" model="m" version="0.1.0" backend="ollama" sandbox="seatbelt" branch="main" busy={false}
        onSubmit={() => {}} onCommand={() => {}} onCancel={() => {}} onPermission={() => {}} />,
   { stdout: stdout as any, stdin: stdin as any },
 );

@@ -16,6 +16,7 @@ import { tmpdir } from "node:os";
 
 import { EventBus } from "../src/core/bus.ts";
 import { App } from "../src/ui/App.tsx";
+import { dark } from "../src/theme/index.ts";
 
 let failures = 0;
 const check = (name: string, ok: boolean, detail = "") => {
@@ -40,7 +41,7 @@ async function drive(keys: string[], width = 100) {
   // saw nothing at all.
   const vt = screen(width, 40);
   const app = mount(
-    <App bus={new EventBus()} cwd={ws} model="m" version="0" backend="b" sandbox="off" busy={false}
+    <App theme={dark} bus={new EventBus()} cwd={ws} model="m" version="0" backend="b" sandbox="off" busy={false}
          onSubmit={(t) => sent.push(t)} onCommand={(c) => ran.push(c)} onCancel={() => {}} onPermission={() => {}} />,
     { stdout: vt.stdout, stdin: vt.stdin },
   );

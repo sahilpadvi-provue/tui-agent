@@ -7,7 +7,7 @@
  * not join them.
  */
 
-import type { Color } from "./backend.ts";
+import type { Paint, Theme } from "../theme/index.ts";
 
 /**
  * Columns of left page padding.
@@ -52,9 +52,9 @@ export const OUTPUT_LINES = 8;
  */
 export type Span = {
   readonly text: string;
-  /** A named colour, or a hex string for shades the palette does not name. */
-  readonly color?: Color | string;
-  readonly bg?: string;
+  /** What the role resolved to. The renderer turns it into codes. */
+  readonly color?: Paint;
+  readonly bg?: Paint;
   readonly dim?: boolean;
   readonly bold?: boolean;
   readonly italic?: boolean;
@@ -64,7 +64,8 @@ export type Line = {
   /** Used when `spans` is absent, and for measuring either way. */
   readonly text: string;
   /** Fills the whole row to the terminal edge. */
-  readonly band?: boolean;
+  /** The field colour, when this row is a banded one. */
+  readonly band?: Paint;
   /** Draws a full-width rule instead of text. */
   readonly rule?: boolean;
   /** Terminal width, needed by anything that fills the row. */
@@ -72,11 +73,16 @@ export type Line = {
   /** Styled runs, left to right. Overrides the line-level styling. */
   readonly spans?: Span[];
   readonly depth?: number;
-  readonly color?: Color;
+  readonly color?: Paint;
   readonly dim?: boolean;
   readonly bold?: boolean;
-  /** Render inline markdown. Prose only; never output or code. */
-  readonly md?: boolean;
+  /**
+   * Render inline markdown, painting code spans with this.
+   *
+   * Carries its colour for the same reason `band` does: the renderer does its
+   * own markdown pass for lines built by hand, and it has no theme to ask.
+   */
+  readonly md?: Paint;
 };
 
 /** Builds a line from spans, keeping `text` in sync for width maths. */
@@ -310,7 +316,9 @@ export function shortenPath(p: string, width: number): string {
  * spending a column or pulling the eye off the text. The trail is short so
  * the word stays readable rather than becoming an animation.
  */
-const SHIMMER = ["#ffffff", "#d4d4d4", "#a0a0a0", "#7a7a7a", "#5f5f5f"] as const;
+// The ramp itself is theme data: it runs bright-to-dark on a dark ground and
+// dark-to-bright on a light one, or the head vanishes and the signal reads
+// backwards.
 
 /**
  * How far past each end the highlight travels.
@@ -321,14 +329,15 @@ const SHIMMER = ["#ffffff", "#d4d4d4", "#a0a0a0", "#7a7a7a", "#5f5f5f"] as const
  * Travel no further at all and the highlight pops onto the first character
  * instead of arriving.
  */
-const LEAD = SHIMMER.length - 2;
+const lead = (ramp: readonly Paint[]) => ramp.length - 2;
 
-export function shimmer(text: string, phase: number): Span[] {
+export function shimmer(text: string, phase: number, ramp: readonly Paint[]): Span[] {
+  const LEAD = lead(ramp);
   const span = text.length + LEAD * 2;
   const head = (phase % span) - LEAD;
   return [...text].map((ch, i) => {
     const distance = Math.abs(i - head);
-    const shade = SHIMMER[Math.min(distance, SHIMMER.length - 1)]!;
+    const shade = ramp[Math.min(distance, ramp.length - 1)]!;
     return { text: ch, color: shade };
   });
 }
@@ -338,7 +347,7 @@ export function shimmer(text: string, phase: number): Span[] {
  * flags, and which paths. Not a shell parser -- it never decides anything, it
  * only tints, so being wrong about an exotic quoting case costs nothing.
  */
-export function highlightCommand(command: string): Span[] {
+export function highlightCommand(command: string, theme: Theme): Span[] {
   const out: Span[] = [];
   const tokens = command.split(/(\s+)/);
   let seenVerb = false;
@@ -351,13 +360,13 @@ export function highlightCommand(command: string): Span[] {
     if (!seenVerb) {
       seenVerb = true;
       // The binary is the one word worth finding at a glance.
-      out.push({ text: token, color: "cyan" });
+      out.push({ text: token, color: theme.name });
       continue;
     }
     // A path is a name, so it takes the same colour as the binary: the reader's
     // question is what the command touched, and the flags are never the answer.
     if (token.startsWith("-")) out.push({ text: token, dim: true });
-    else if (token.includes("/") || token.includes(".")) out.push({ text: token, color: "cyan" });
+    else if (token.includes("/") || token.includes(".")) out.push({ text: token, color: theme.name });
     else if (/^[|;&><]+$/.test(token)) out.push({ text: token, dim: true });
     else out.push({ text: token });
   }

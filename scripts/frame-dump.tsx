@@ -3,6 +3,7 @@ import { mount } from "../src/ui/primitives.tsx";
 import { PassThrough, Writable } from "node:stream";
 import { EventBus } from "../src/core/bus.ts";
 import { App } from "../src/ui/App.tsx";
+import { dark } from "../src/theme/index.ts";
 
 const ROWS = 24, COLS = 90;
 let buf = "";
@@ -10,7 +11,7 @@ const stdout = Object.assign(new Writable({ write(c,_e,cb){ buf += String(c); cb
   { columns: COLS, rows: ROWS, isTTY: true });
 const stdin = Object.assign(new PassThrough(), { isTTY: true, setRawMode(){}, ref(){}, unref(){} });
 const bus = new EventBus();
-const app = mount(<App bus={bus} cwd="/Users/sahilpadvi/Desktop/TUI" model="qwen3:8b" version="0.1.0" backend="ollama" sandbox="seatbelt" branch="main" busy={false}
+const app = mount(<App theme={dark} bus={bus} cwd="/Users/sahilpadvi/Desktop/TUI" model="qwen3:8b" version="0.1.0" backend="ollama" sandbox="seatbelt" branch="main" busy={false}
   onSubmit={()=>{}} onCommand={()=>{}} onCancel={()=>{}} onPermission={()=>{}} />,
   { stdout: stdout as any, stdin: stdin as any });
 

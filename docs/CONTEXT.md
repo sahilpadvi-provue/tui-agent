@@ -130,6 +130,9 @@ it. Ink is a dev dependency, now both the second backend and the control arm in
 
 - Composer is a real line editor: cursor movement, word jumps (alt-arrows,
   alt-b/f), ctrl-a/e/w/u/k, history with draft preservation, `?` shortcut list.
+- Themes. Two built-in (`dark`, `light`), `THEME=` at launch and `/theme` mid
+  session. Components ask for roles (`theme.error`) and never name a colour.
+  `src/theme/` imports nothing and knows nothing about terminals.
 - Resume works from the terminal client: `--continue` for the most recent,
   `--resume [id]` to pick or reopen, and `/resume` switching in place without
   quitting. Only sessions from this workspace are offered.
@@ -150,15 +153,26 @@ it. Ink is a dev dependency, now both the second backend and the control arm in
 - ~20 gate scripts in `scripts/` (`*-check`, `*-smoke`): boundary, sandbox,
   cancel, resume, checkpoint, log-equivalence, queue, commands, keys, resize,
   quiet-resize, colour, markdown, input, render, host, app, quit, backend,
-  resume-ui, changed, width, permission, clock, ui-smoke. These are the
-  primary check; they prove behaviour end to end. All 24 runnable ones pass as
-  of this writing.
+  resume-ui, changed, width, permission, clock, theme, marks, motion,
+  ui-smoke. These are the primary check; they prove behaviour end to end. All
+  27 runnable ones pass as of this writing.
 - `bun test src/` — unit tests for `editor.ts` and `layout.ts` (64 tests), a
   complement to the gates, not a replacement.
 - 5 eval fixtures in `evals/`.
 
 ## Hard-won gotchas
 
+- **A slot is a request, a hex is an assertion.** The themes use named ANSI
+  slots wherever the terminal already has an opinion, so the user's configured
+  palette answers them, and exact values only for `band`, `cursor` and
+  `cursorText`. That is why dark and light differ in three values.
+  `colour-check` asserts both halves -- every slot role identical across
+  themes, and exactly those three different -- so the next person to "just use
+  hex everywhere" fails a gate instead of quietly overriding everyone's
+  terminal.
+- **Adding a command can hide one.** `/theme` took the count to nine against a
+  palette capped at eight rows, and `/clear` silently dropped off the end.
+  `commands-check` asserts the relationship now rather than the number.
 - **A running timer hides defects, so the clock has to be able to stop.** A
   screen with motion on it re-renders on the next tick and picks up whatever
   went wrong, which is why `quiet-resize-check` asserts against a component
