@@ -1,33 +1,38 @@
-/** Renders each interaction state so spacing can be judged in all of them. */
+/**
+ * Renders each interaction state so spacing can be judged in all of them.
+ *
+ * Read through a terminal, not off the byte stream. The escape sequences a
+ * cell renderer emits *are* the row boundaries, so stripping them concatenates
+ * the screen into one line and every judgement made from it is wrong.
+ */
 import React from "react";
 import { mount } from "../src/ui/primitives.tsx";
-import { PassThrough, Writable } from "node:stream";
 import { EventBus } from "../src/core/bus.ts";
 import { App } from "../src/ui/App.tsx";
+import { screen } from "./vt.ts";
 
 const COLS = 92;
 
 async function frame(name: string, busy: boolean, drive: (e: (x: any) => void) => void) {
-  let buf = "";
-  const stdout = Object.assign(new Writable({ write(c, _e, cb) { buf += String(c); cb(); return true; } }),
-    { columns: COLS, rows: 40, isTTY: true });
-  const stdin = Object.assign(new PassThrough(), { isTTY: true, setRawMode() {}, ref() {}, unref() {} });
+  const view = screen(COLS, 40);
   const bus = new EventBus();
   const app = mount(
     <App bus={bus} cwd="/Users/sahilpadvi/Desktop/TUI" model="qwen3:8b" version="0.1.0" backend="ollama" sandbox="seatbelt" branch="main" busy={busy}
          onSubmit={() => {}} onCommand={() => {}} onCancel={() => {}} onPermission={() => {}} />,
-    { stdout: stdout as any, stdin: stdin as any },
+    { stdout: view.stdout, stdin: view.stdin },
   );
   drive((x) => bus.emit({ sessionId: "s", ...x }));
   await new Promise((r) => setTimeout(r, 150));
+
+  // Read before unmounting: unmount stops painting, but the screen is easier
+  // to reason about while the app still owns it.
+  const rows = view.lines().map((l) => l.replace(/\s+$/, ""));
+  const last = rows.findLastIndex((l) => l !== "");
   app.unmount();
   await app.waitUntilExit();
 
-  const lines = buf.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "").split("\n");
-  // Only the final frame.
-  const last = lines.slice(-Math.min(lines.length, 18));
   console.log(`\n── ${name} ${"─".repeat(Math.max(0, 74 - name.length))}`);
-  for (const l of last) console.log("  |" + l.replace(/\s+$/, ""));
+  for (const l of rows.slice(0, last + 1)) console.log("  |" + l);
 }
 
 await frame("empty — first launch", false, () => {});
