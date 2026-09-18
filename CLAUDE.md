@@ -122,6 +122,7 @@ Ollama must be running (`ollama serve`) with the model pulled. Only one model fi
 bun run evals                                # every fixture
 bun run evals --fast                         # the fast subset, while iterating
 bun run evals --only ambiguous-edit --repeats 5
+bun run evals --timeout 120            # a run that outlasts this is killed and fails
 ```
 
 ## Gate scripts

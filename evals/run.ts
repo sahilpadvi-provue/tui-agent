@@ -32,6 +32,7 @@ type Args = {
   only?: string;
   model: string;
   maxTurns: number;
+  timeoutMs: number;
 };
 
 function parseArgs(): Args {
@@ -47,6 +48,10 @@ function parseArgs(): Args {
     only: val("--only"),
     model: val("--model") ?? process.env.MODEL ?? "qwen3:8b",
     maxTurns: Number(val("--max-turns") ?? 20),
+    // Ten minutes is far past any fixture that is working and far short of a
+    // sweep nobody is watching. Settable so the gate can drive the timeout
+    // itself rather than waiting one out.
+    timeoutMs: Number(val("--timeout") ?? process.env.EVAL_TIMEOUT_MS ?? 600_000),
   };
 }
 
@@ -98,7 +103,19 @@ async function runOnce(fixture: Fixture, args: Args) {
   });
 
   const started = Date.now();
-  const state = await loop.run(fixture.task);
+  // A wedged run used to hang the whole sweep, which is worse than scoring it
+  // wrong: nothing is reported at all and there is nothing to read afterwards.
+  // `cancel` is the loop's own path and returns "cancelled", so the verdict
+  // rule below already refuses it; the flag only exists to say which of the
+  // two happened.
+  let timedOut = false;
+  const timer = setTimeout(() => { timedOut = true; loop.cancel(); }, args.timeoutMs);
+  let state;
+  try {
+    state = await loop.run(fixture.task);
+  } finally {
+    clearTimeout(timer);
+  }
   const elapsedMs = Date.now() - started;
 
   const toolCalls: Record<string, number> = {};
@@ -137,7 +154,9 @@ async function runOnce(fixture: Fixture, args: Args) {
   // name that does not exist, because nothing escaped and nothing was
   // fabricated. Asserted here rather than in each verifier, since the next
   // fixture written in that shape would have to remember on its own.
-  if (result.ok && state !== "completed") {
+  if (timedOut) {
+    result = { ok: false, reason: `killed at the ${args.timeoutMs / 1000}s timeout: ${result.reason}` };
+  } else if (result.ok && state !== "completed") {
     result = { ok: false, reason: `run ended ${state}: ${result.reason}` };
   }
 
