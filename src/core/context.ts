@@ -23,7 +23,10 @@ export function estimateTokens(messages: ConvoMessage[]): number {
   for (const m of messages) {
     chars += m.text.length;
     if (m.toolArgs) chars += JSON.stringify(m.toolArgs).length;
-    if (m.reasoning?.text) chars += m.reasoning.text.length;
+    // Reasoning is deliberately not counted: `toOllama` does not send it, so
+    // charging it budgets for bytes that never leave. It made compaction fire
+    // early, on a model that emits more reasoning than answer. Restore this
+    // the day a provider replays it -- see `ReasoningPayload`.
   }
   return Math.ceil(chars / CHARS_PER_TOKEN);
 }

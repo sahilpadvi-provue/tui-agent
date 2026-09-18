@@ -184,6 +184,20 @@ export class OllamaClient implements ModelClient {
   }
 }
 
+/**
+ * What goes on the wire, and what deliberately does not.
+ *
+ * `thinking` and `tool_call_id` are both accepted by Ollama with a 200 and
+ * both are discarded. Measured against 0.34.1 with qwen3:8b by comparing
+ * `prompt_eval_count` for the same conversation with and without each: 24
+ * tokens either way for a 28-token `thinking` string, and 41 either way for a
+ * 60-character `tool_call_id`. Removing `tool_name` does not move it either --
+ * this model's template renders tool results positionally.
+ *
+ * So a turn with two calls to the same tool is already ambiguous to the model
+ * and adding the id here would not fix it. A provider that keys results by id
+ * needs it, which is the second provider's problem and not this file's.
+ */
 function toOllama(m: ConvoMessage): OllamaMessage {
   if (m.role === "tool") {
     return { role: "tool", content: m.text, tool_name: m.toolName };

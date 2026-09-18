@@ -26,7 +26,15 @@ export type Role = "user" | "assistant" | "system" | "tool";
 
 /** Stored verbatim as the provider returned it. Never normalised. */
 export type ReasoningPayload = {
-  /** Opaque provider-native blob, replayed byte-identical on the next turn. */
+  /**
+   * Opaque provider-native blob, kept so the log holds the whole turn.
+   *
+   * Not replayed: `toOllama` does not send it, because Ollama does not read it.
+   * Measured against 0.34.1 with qwen3:8b -- an assistant message carrying
+   * `thinking` is accepted with a 200 and the prompt is the same length as
+   * without it, with `think` requested and not. A provider that does read it
+   * would send it here and restore the charge in `estimateTokens`.
+   */
   readonly raw: unknown;
   /** Human-readable text, when the provider exposes any. Display only. */
   readonly text?: string;
