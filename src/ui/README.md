@@ -106,7 +106,19 @@ The session title is taken from the first request and is the only elastic field 
 
 **A permission prompt must not answer itself.** It replaces the composer in place, so the keystroke already on its way was aimed at the sentence the user was writing, not at a question they had not seen -- and `y` bound to allow was the first thing checked. A key counts as an answer only if it did not arrive mid-run: keystrokes closer together than `DECIDE_GUARD_MS` are someone writing, not someone answering, and the window also starts fresh when the prompt arrives. Stray keys are discarded rather than queued, because queueing applies them the moment the guard lifts. The parser's run-batching made fast typing accidentally safe already -- `char` is "yes" and never matched "y" -- so this covers the slow case, where every character arrives on its own. It cannot close a deliberate `y` after a pause, which is the argument for the prompt being visibly *new* rather than merely present.
 
-**Nothing on screen moves while the user is deciding.** Motion is gated on `busy && !state.pending`, so the working indicator stops for a permission prompt. It is the sharpest motion decision here: a screen that animates while someone weighs approving a destructive command is competing for the attention that decision needs. Anything added to the prompt must be one-shot for the same reason.
+**Nothing on screen is in continuous motion while the user is deciding.** Motion is gated on `busy && !state.pending`, so the working indicator stops for a permission prompt. It is the sharpest motion decision here: a screen that animates while someone weighs approving a destructive command is competing for the attention that decision needs.
+
+The carve-out is deliberate and is not a loophole. A **one-shot** emphasis on the prompt's arrival is allowed, because it fires once and then the screen is still — and it is the only channel that reaches someone whose attention is on their own typing, which is exactly the person the keystroke guard cannot protect. A loop there would destroy the property. So the rule is "nothing is *in* motion", not "nothing ever moves": read the stricter way, the first person here will delete either the emphasis or the rule.
+
+**One source of time, in `clock.ts`.** `usePhase(everyMs)` shares a single timer; intervals round up to a multiple of `TICK_MS`, so everything animating lands in one commit rather than each piece producing its own stream. The app had two independent intervals before this, 90ms and 1000ms.
+
+**The timer exists only while something is animating.** Created by the first subscriber, cleared by the last. That is not a micro-optimisation: a running timer re-renders on its next tick and picks up whatever went wrong, so a screen with motion on it looks correct whether or not a resize did any work. `quiet-resize-check` can only see the bug it was written for on a screen that is genuinely still, and `docs/CONTEXT.md` records three wrong conclusions in one session from measuring through a running shimmer. An always-on frame loop would make that gate structurally blind.
+
+**80ms, not 16.** Perceived motion in a terminal runs an order of magnitude below display refresh everywhere it has been measured. 60Hz is a ceiling on flush, never the rate of motion — and here a tick costs a repaint, and `paint()` is O(the whole transcript).
+
+**`NO_MOTION` takes `NO_COLOR`'s rule**: present and non-empty suppresses, whatever the value. It is a subscription decision rather than a render-time branch, so it cannot leave anything half-animated. It applies to decoration only — the elapsed clock goes nowhere near it, because a number that stops counting is not calmer, it is broken. And it is deliberately not tied to `isTTY`, which is for pipes and CI and says nothing about a human on a real terminal with a screen reader.
+
+**`usePhase` is not part of the `Backend` contract.** It produces state changes, React commits them, and whichever backend is mounted paints the result. It needs no knowledge of how a frame reaches the terminal and therefore no second implementation for Ink.
 
 ## The keyboard is never taken away
 

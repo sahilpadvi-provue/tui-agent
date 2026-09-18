@@ -30,6 +30,10 @@ bun run sessions checkpoints                 # git snapshots taken before edits
 Flags: `--no-sandbox` disables OS containment, `CONTEXT_WINDOW=3000` forces
 early compaction for testing.
 
+`NO_MOTION=1` suppresses decorative animation, on `NO_COLOR`'s rule: present
+and non-empty is enough, whatever the value. The elapsed clock keeps counting,
+because a number that stops is not calmer.
+
 `MODEL=<name>` overrides the Ollama model.
 
 ## The renderer
@@ -238,6 +242,7 @@ is what proves the boundary held.
 | Sandbox blocks writes and egress | `bun run scripts/sandbox-check.ts` | passing |
 | Checkpoint restores a damaged file | `bun run scripts/checkpoint-check.ts` | passing |
 | Every renderer backend draws the same screen | `bun run backend:check` | passing |
+| One shared clock, and none when nothing animates | `bun run clock:check` | passing |
 
 ## Editing with small models
 

@@ -22,6 +22,7 @@
     "changed:check": "bun run scripts/changed-check.ts",
     "width:check": "bun run scripts/width-check.ts",
     "permission:check": "bun run scripts/permission-check.tsx",
+    "clock:check": "bun run scripts/clock-check.tsx",
     "sessions": "bun run src/cli/sessions.ts",
     "evals": "bun run evals/run.ts",
     "build": "bun build --compile src/cli/tui.tsx --outfile dist/tui --external react-devtools-core && bun build --compile src/cli/headless.ts --outfile dist/agent"

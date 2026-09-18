@@ -113,7 +113,7 @@ bun run sessions list|context|restore|checkpoints
 bun x tsc --noEmit                           # run on every change
 ```
 
-Flags: `--no-sandbox` disables OS containment, `CONTEXT_WINDOW=3000` forces early compaction, `MODEL=<name>` picks the Ollama model.
+Flags: `--no-sandbox` disables OS containment, `CONTEXT_WINDOW=3000` forces early compaction, `MODEL=<name>` picks the Ollama model, `NO_MOTION=1` suppresses decorative animation.
 
 Ollama must be running (`ollama serve`) with the model pulled. Only one model fits in memory at a time; never run two.
 
@@ -145,6 +145,7 @@ bun run resume:check                                   # resume works from the t
 bun run changed:check                                  # what a call changed reaches the view model
 bun run width:check                                    # width is columns, not code units
 bun run permission:check                               # a stray keystroke cannot approve a tool
+bun run clock:check                                    # one shared clock, and none when nothing moves
 ```
 
 ## Attribution

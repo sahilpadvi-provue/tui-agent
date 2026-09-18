@@ -150,15 +150,26 @@ it. Ink is a dev dependency, now both the second backend and the control arm in
 - ~20 gate scripts in `scripts/` (`*-check`, `*-smoke`): boundary, sandbox,
   cancel, resume, checkpoint, log-equivalence, queue, commands, keys, resize,
   quiet-resize, colour, markdown, input, render, host, app, quit, backend,
-  resume-ui, changed, width, permission, ui-smoke. These are the primary
-  check; they prove behaviour end to end. All 23 runnable ones pass as of this
-  writing.
+  resume-ui, changed, width, permission, clock, ui-smoke. These are the
+  primary check; they prove behaviour end to end. All 24 runnable ones pass as
+  of this writing.
 - `bun test src/` — unit tests for `editor.ts` and `layout.ts` (64 tests), a
   complement to the gates, not a replacement.
 - 5 eval fixtures in `evals/`.
 
 ## Hard-won gotchas
 
+- **A running timer hides defects, so the clock has to be able to stop.** A
+  screen with motion on it re-renders on the next tick and picks up whatever
+  went wrong, which is why `quiet-resize-check` asserts against a component
+  with no timer and why an always-on frame loop would have made it blind. The
+  shared clock is created by its first subscriber and cleared by its last.
+- **`useSyncExternalStore` dedupes for you, and that can hide a gate hole.**
+  The clock skips waking a watcher on a tick that cannot change its phase, and
+  notifying every watcher on every tick passes the whole gate: every phase is
+  derived from the same counter, so React bails out on an equal snapshot. The
+  modulo saves the wakeup, not the render. Mutation testing found this, and the
+  comment now says which of the two it is.
 - **A prompt that replaces the composer can answer itself.** The permission
   block took over the keyboard while the user might be mid-word, and `y` was
   the first key it checked. Fast typing was accidentally safe because the

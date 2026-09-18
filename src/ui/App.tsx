@@ -15,6 +15,7 @@ import {
   rowDown, rowUp, wordLeft, wordRight,
 } from "./editor.ts";
 import { SHORTCUTS } from "./shortcuts.ts";
+import { TICK_MS, motion, usePhase } from "./clock.ts";
 import { radiusLines } from "../permissions/policy.ts";
 import { COMMANDS, isCommand } from "../commands/registry.ts";
 import type { EventBus } from "../core/bus.ts";
@@ -74,7 +75,6 @@ export function App({
   const [confirmQuit, setConfirmQuit] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [queued, setQueued] = useState<string[]>([]);
-  const [phase, setPhase] = useState(0);
   const [selected, setSelected] = useState(0);
   const [cursor, setCursor] = useState(initialInput?.length ?? 0);
   const [sent, setSent] = useState<string[]>([]);
@@ -136,28 +136,31 @@ export function App({
     wasBusy.current = busy;
   }, [busy, queued, onSubmit]);
 
+  // Both of these used to own a `setInterval`, which meant two independent
+  // commit streams and a timer running whenever the app was busy. They share
+  // one clock now, so their ticks land in the same frame, and it stops
+  // entirely when nothing is animating.
+  //
   // The wave through "working" runs faster than the clock: a second is long
-  // enough to look stopped.
-  useEffect(() => {
-    if (!busy) return;
-    const id = setInterval(() => setPhase((p) => p + 1), 90);
-    return () => clearInterval(id);
-  }, [busy]);
+  // enough to look stopped. It is decoration, so it goes through `motion` and
+  // disappears under NO_MOTION.
+  const phase = usePhase(busy ? motion(SHIMMER_MS) : null);
 
   // A local model can think for minutes. Without a clock the screen is
-  // indistinguishable from a hang, and the first instinct is to kill it.
+  // indistinguishable from a hang, and the first instinct is to kill it -- so
+  // this is information rather than decoration and NO_MOTION leaves it alone.
+  const second = usePhase(busy ? 1000 : null);
   useEffect(() => {
     if (!busy) {
       startedAt.current = null;
       setElapsed(0);
       return;
     }
-    startedAt.current = Date.now();
-    const id = setInterval(() => {
-      if (startedAt.current) setElapsed(Math.floor((Date.now() - startedAt.current) / 1000));
-    }, 1000);
-    return () => clearInterval(id);
-  }, [busy]);
+    if (startedAt.current === null) startedAt.current = Date.now();
+    // Read from the real clock rather than counting ticks, so a coalesced or
+    // late tick still shows the right number.
+    setElapsed(Math.floor((Date.now() - startedAt.current) / 1000));
+  }, [busy, second]);
 
   /** Every write to the prompt goes through here, so the cursor cannot drift. */
   const put = (text: string, at = text.length) => {
@@ -704,6 +707,14 @@ const ID_COLUMN = 10;
 /** Width of the key column in the shortcut list. */
 const KEY_COLUMN = 18;
 
+
+/**
+ * The shimmer runs at the clock's quantum: one step, the fastest anything here
+ * moves. It was 90ms, tuned by eye, and a request for 90 would round up to two
+ * steps and halve the speed -- so it asks for the quantum itself, which is
+ * also what other terminal UIs settle on for a running indicator.
+ */
+const SHIMMER_MS = TICK_MS;
 
 /** The live frame is redrawn on every keystroke, so the list is capped. */
 const PALETTE_ROWS = 8;
