@@ -131,6 +131,15 @@ done. The list is the whole suite: two independently-built shorter lists both
 missed `scripts/resume-check.ts`, because `resume:check` points at a different
 script and nothing else names it.
 
+Loop it with `eval "$line"`. zsh does not word-split an unquoted expansion, so a
+runner that interpolates a command from a variable runs it as one long filename.
+Whether that breaks every entry or only `replay.ts` -- the one line here carrying
+an argument -- depends on how the runner is built, and the second case is the
+dangerous one: twenty-nine pass, one fails as a missing file, and it reads as
+that gate failing rather than as the runner being wrong. It has been mistaken
+for a flake. `${=line}` also fixes it, but only on zsh; on bash it is a syntax
+error.
+
 ```bash
 bun run scripts/replay.ts fixtures/handwritten.jsonl   # log replays, compaction reversible
 bun run scripts/boundary.ts                            # workspace escape blocked
