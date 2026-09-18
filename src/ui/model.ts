@@ -11,7 +11,7 @@ import type { AgentEvent, BlastRadius, RunState, TokenUsage } from "../core/even
 export type ViewItem =
   | { kind: "user"; id: string; text: string }
   | { kind: "assistant"; id: string; text: string; streaming: boolean }
-  | { kind: "reasoning"; id: string; chars: number; done: boolean }
+  | { kind: "reasoning"; id: string; startedAt: string; ms: number; done: boolean }
   | {
       kind: "tool";
       callId: string;
@@ -88,7 +88,7 @@ export function reduce(s: ViewState, action: ViewAction): ViewState {
     }
 
     case "reasoning.started":
-      return { ...s, items: [...items, { kind: "reasoning", id: e.id, chars: 0, done: false }] };
+      return { ...s, items: [...items, { kind: "reasoning", id: e.id, startedAt: e.at, ms: 0, done: false }] };
     /**
      * Ignored on purpose.
      *
@@ -108,7 +108,7 @@ export function reduce(s: ViewState, action: ViewAction): ViewState {
         items: patch(items, (i) => i.kind === "reasoning" && i.id === e.id, (i) => ({
           ...i,
           done: true,
-          chars: e.payload.text?.length ?? (i as Extract<ViewItem, { kind: "reasoning" }>).chars,
+          ms: Date.parse(e.at) - Date.parse((i as Extract<ViewItem, { kind: "reasoning" }>).startedAt),
         })),
       };
 

@@ -34,6 +34,12 @@ e({ type: "message.completed", id: "u0", text: "add a health endpoint" });
 e({ type: "tool.started", callId: "c0", name: "shell" });
 e({ type: "tool.ended", callId: "c0", args: { command: "npm test" } });
 e({ type: "tool.result", callId: "c0", ok: true, result: "3 passing" });
+// One finished and one still running, because the live line is drawn in place
+// rather than scrolled: completing the only reasoning item overwrites the very
+// row the next check is looking for.
+e({ type: "reasoning.started", id: "r1" });
+await wait(120);
+e({ type: "reasoning.completed", id: "r1", payload: { raw: {}, text: "some reasoning" } });
 e({ type: "reasoning.started", id: "r0" });
 await wait(150);
 app.unmount();
@@ -50,6 +56,13 @@ check("the banner rendered", rows.some((r) => r.includes("tui-agent")), rows[0] 
 check("the request rendered", rows.some((r) => r.includes("add a health endpoint")));
 check("the tool call rendered", rows.some((r) => r.includes("npm test")));
 check("the live reasoning line rendered", rows.some((r) => r.includes("thinking")));
+// A duration, not a character count: what the reader spent, not what the model
+// produced. Matched as a shape so the assertion does not pin the wall clock.
+check(
+  "finished reasoning reports how long it took",
+  rows.some((r) => /thought for \d+(\.\d)?s/.test(r)),
+  rows.find((r) => r.includes("thought for")) ?? "no `thought for` line at all",
+);
 check("the composer rendered", rows.some((r) => r.includes("type to queue")));
 check("the footer rendered", rows.some((r) => r.includes("qwen3:8b")));
 

@@ -126,15 +126,24 @@ bun run evals --only ambiguous-edit --repeats 5
 
 ## Gate scripts
 
-Run the one covering what you changed; run all of them before calling phase work done.
+Run the one covering what you changed; run all thirty before calling phase work
+done. The list is the whole suite: two independently-built shorter lists both
+missed `scripts/resume-check.ts`, because `resume:check` points at a different
+script and nothing else names it.
 
 ```bash
 bun run scripts/replay.ts fixtures/handwritten.jsonl   # log replays, compaction reversible
 bun run scripts/boundary.ts                            # workspace escape blocked
 bun run scripts/sandbox-check.ts                       # OS sandbox contains writes and egress
 bun run scripts/checkpoint-check.ts                    # checkpoint restores, user git state untouched
+bun run scripts/log-equivalence.tsx                    # mounting the UI changes nothing the runtime records
+bun run scripts/resume-check.ts                        # a session survives the process that made it
+bun run scripts/cancel-check.ts                        # Esc kills the whole process tree, output kept
+bun run scripts/commands-check.tsx                     # a command is shown, logged, and hidden from the model
 bun run scripts/bench.tsx                              # render cost on a long transcript
 bun run scripts/ui-smoke.tsx                           # UI renders a frame
+bun run app:check                                      # the real App, unmodified, through the cell renderer
+bun run host:check                                     # the host draws what the components describe
 bun run render:check                                   # no ghosting on resize, with Ink as a control
 bun run quiet:check                                    # a resize repaints with nothing else running
 bun run input:check                                    # keys, runs of typing, bracketed paste
@@ -142,9 +151,13 @@ bun run colour:check                                   # no 24-bit colour on a t
 bun run md:check                                       # emphasis survives the renderer
 bun run scripts/keys-check.tsx                         # every key binding edits what it claims to
 bun run scripts/latency-check.tsx                      # the frame cap does not delay a keystroke
+bun run scripts/queue-check.tsx                        # typing is never blocked; Enter queues and flushes
+bun run scripts/quit-check.tsx                         # ctrl-C when idle: once to arm, twice to exit
 bun run backend:check                                  # every renderer backend draws the same screen
 bun run resume:check                                   # resume works from the terminal client
 bun run changed:check                                  # what a call changed reaches the view model
+bun run marks:check                                    # the mark column carries what a call did to your files
+bun run motion:check                                   # what moves, when, and what stops
 bun run width:check                                    # width is columns, not code units
 bun run permission:check                               # a stray keystroke cannot approve a tool
 bun run clock:check                                    # one shared clock, and none when nothing moves

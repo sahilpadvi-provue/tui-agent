@@ -49,7 +49,7 @@ const TOOLS = [
 function advance(n: number): void {
   const tool = TOOLS[n % TOOLS.length]!;
   settled.push(
-    { text: `thought for ${300 + n * 37} chars`, depth: DEPTH.did, dim: true },
+    { text: `thought for ${((300 + n * 37) / 100).toFixed(1)}s`, depth: DEPTH.did, dim: true },
     styled(
       DEPTH.did,
       { text: "✓ ", color: slot("green") },

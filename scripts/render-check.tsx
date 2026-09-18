@@ -79,7 +79,7 @@ console.log(`     (the terminal's own reflow moved ${byReflow} into scrollback; 
 
 // The live region redrawing in place must not grow the frame.
 const before = term.visible().filter(Boolean).length;
-push(68, frame(68, "thought for 966 chars"));
+push(68, frame(68, "thought for 8.2s"));
 const after = term.visible().filter(Boolean).length;
 check("redraw in place keeps the same row count", before === after, `${before} -> ${after}`);
 check("the redraw replaced the line", !term.visible().some((l) => l.includes("thinking…")));

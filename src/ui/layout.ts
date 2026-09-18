@@ -327,6 +327,25 @@ export function workingVerb(): string {
   return WORKING[turns++ % WORKING.length]!;
 }
 
+/**
+ * A finished duration, for the reader who waited it out.
+ *
+ * Tenths below ten seconds because a local model's reasoning is often under a
+ * second, and `0s` would report a pause the reader watched happen. Whole
+ * seconds above that, where a tenth is noise.
+ *
+ * Defensive about its input because it is fed by arithmetic on two log
+ * timestamps, and a log is a file on disk that can be hand-written or
+ * truncated -- `fixtures/handwritten.jsonl` is exactly that. A bad pair must
+ * read as no time rather than as `NaNs`.
+ */
+export function elapsed(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return "0s";
+  if (ms < 10_000) return `${(ms / 1000).toFixed(1)}s`;
+  const s = Math.round(ms / 1000);
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
+}
+
 /** Shortens a path from the left, keeping the end that identifies it. */
 export function shortenPath(p: string, width: number): string {
   if (p.length <= width) return p;

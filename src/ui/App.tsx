@@ -6,7 +6,7 @@ import { Markdown, blocks, tableLines, wrapSpans } from "./markdown.tsx";
 import { bannerLines } from "./banner.ts";
 import {
   BLANK, DEPTH, GUTTER, STEP,
-  clip, highlightCommand, measureAt, outputLines, shimmer, shortenPath, styled,
+  clip, elapsed, highlightCommand, measureAt, outputLines, shimmer, shortenPath, styled,
   summariseCall, verbFor, workingVerb, wrap,
   type Line as L,
 } from "./layout.ts";
@@ -993,7 +993,7 @@ function renderItem(i: ViewItem, term: number, theme: Theme): L[] {
 
     case "reasoning":
       return [{
-        text: `  ${i.done ? `thought for ${i.chars.toLocaleString()} chars` : "thinking\u2026"}`,
+        text: `  ${i.done ? `thought for ${elapsed(i.ms)}` : "thinking\u2026"}`,
         depth: DEPTH.did,
         dim: true,
       }];

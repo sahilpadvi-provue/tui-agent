@@ -9,7 +9,7 @@
 import { test, expect, describe, afterEach } from "bun:test";
 import {
   measureAt, wrap, clip, outputLines, summariseCall, verbFor,
-  shortenPath, shimmer, highlightCommand, workingVerb,
+  shortenPath, shimmer, highlightCommand, workingVerb, elapsed,
   charWidth, displayWidth, sliceToWidth,
 } from "./layout.ts";
 import { dark, rgb } from "../theme/index.ts";
@@ -278,5 +278,27 @@ describe("workingVerb", () => {
     const many = Array.from({ length: 40 }, () => workingVerb());
     expect(new Set(many).size).toBeGreaterThan(8);
     expect(new Set(many).size).toBeLessThan(40);
+  });
+});
+
+describe("elapsed", () => {
+  test("reports tenths under ten seconds", () => {
+    // The fixture's own reasoning span is 500ms. Whole seconds would print
+    // `0s` for a pause the reader sat through.
+    expect(elapsed(500)).toBe("0.5s");
+    expect(elapsed(8200)).toBe("8.2s");
+  });
+  test("drops the tenth once it is noise", () => {
+    expect(elapsed(12_000)).toBe("12s");
+    expect(elapsed(59_400)).toBe("59s");
+  });
+  test("carries into minutes rather than printing 60s", () => {
+    expect(elapsed(59_700)).toBe("1m 0s");
+    expect(elapsed(123_000)).toBe("2m 3s");
+  });
+  test("a bad log timestamp reads as no time, never NaN", () => {
+    for (const bad of [NaN, -1, Infinity, Date.parse("nonsense") - 0]) {
+      expect(elapsed(bad)).toBe("0s");
+    }
   });
 });
