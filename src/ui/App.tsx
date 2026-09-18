@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { Stack, Label, Settled, useKeys, usePaste, useColumns, useApp } from "./primitives.tsx";
 import type { Color } from "./backend.ts";
 import { reduce, initialState, cleared, type ViewItem } from "./model.ts";
-import { Markdown } from "./markdown.tsx";
+import { Markdown, blocks, tableLines, wrapSpans } from "./markdown.tsx";
 import { bannerLines } from "./banner.ts";
 import {
   BLANK, DEPTH, GUTTER, STEP,
@@ -943,12 +943,27 @@ function renderItem(i: ViewItem, term: number, theme: Theme): L[] {
       }));
     }
 
-    case "assistant":
-      return wrap(i.text, measureAt(DEPTH.said, term)).map((t) => ({
-        text: t,
-        depth: DEPTH.said,
-        md: theme.name,
-      }));
+    case "assistant": {
+      const w = measureAt(DEPTH.said, term);
+      // A table is laid out here rather than wrapped, because its columns
+      // cannot be chosen from one row at a time.
+      // A table is an object on the page, not a run of prose, so it gets a
+      // blank row either side. Without one the header runs straight out of the
+      // sentence that introduced it.
+      return blocks(i.text).flatMap((b, n) =>
+        b.kind === "table"
+          ? [
+              ...(n > 0 ? [BLANK] : []),
+              ...tableLines(b.table, w, DEPTH.said, theme),
+              BLANK,
+            ]
+          : wrapSpans(b.text, w, theme).map((spans) => ({
+              text: spans.map((s) => s.text).join(""),
+              spans,
+              depth: DEPTH.said,
+            })),
+      );
+    }
 
     case "reasoning":
       return [{

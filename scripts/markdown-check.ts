@@ -56,4 +56,49 @@ const raw = renderFrame(null, paint([{ text: "a ** b ` c", depth: 0 } as never],
 check("a non-markdown line is untouched", plain(raw) === "a ** b ` c", plain(raw));
 
 console.log(failures === 0 ? "\nemphasis survives the cell renderer" : `\n${failures} failed`);
+// ---------------------------------------------------------------------------
+// Emphasis has to survive the line break, and a table has to hold its columns
+// ---------------------------------------------------------------------------
+
+const { wrapSpans, blocks, tableLines } = await import("../src/ui/markdown.tsx");
+const { displayWidth } = await import("../src/ui/layout.ts");
+const { dark } = await import("../src/theme/index.ts");
+
+const long = "The parser **strips whitespace that was inside the quotes** and is wrong.";
+const wrapped = wrapSpans(long, 40, dark);
+const asText = wrapped.map((l) => l.map((s) => s.text).join(""));
+
+const boldLines = wrapped.filter((l) => l.some((s) => s.bold)).length;
+check("the phrase spans more than one line at this width", wrapped.length > 1, asText.join(" / "));
+check("and both of its halves are still bold", boldLines === 2, `${boldLines} of ${wrapped.length}`);
+check("and never shows its markers",
+  !asText.join("").includes("**"),
+  "wrapping before parsing splits the pair and renders both halves raw");
+check("every wrapped line fits the width",
+  asText.every((l) => displayWidth(l) <= 40), asText.map(displayWidth).join(","));
+
+const md = `| Option | Detail |
+| --- | --- |
+| **Name** | A sentence long enough that it has to wrap inside its column. |
+| \`code\` | https://example.com/a/very/long/url/that/exceeds/its/column/width |`;
+
+const parsed = blocks(md);
+check("a table is recognised as a block", parsed.length === 1 && parsed[0]?.kind === "table");
+check("two pipes in a sentence are not a table",
+  blocks("a | b and c | d").every((b) => b.kind === "text"));
+
+if (parsed[0]?.kind === "table") {
+  const lines = tableLines(parsed[0].table, 60, 0, dark);
+  const widths = lines.map((l) => displayWidth(l.text));
+  check("every row of a table is the same width",
+    new Set(widths).size === 1, [...new Set(widths)].join(","));
+  check("and none of them exceeds it", widths.every((w) => w <= 60), `${Math.max(...widths)} of 60`);
+  check("a url too wide for its column is broken, not left to shear the table",
+    lines.some((l) => l.text.includes("example.com")) && Math.max(...widths) <= 60);
+  check("the header is weight, not colour",
+    lines[0]?.spans?.some((s) => s.bold) === true
+      && lines[0]?.spans?.every((s) => s.color === undefined || s.color === dark.muted) === true,
+    "every colour on this screen already means something, and heading is not one");
+}
+
 process.exit(failures === 0 ? 0 : 1);
