@@ -271,6 +271,18 @@ export class AgentLoop {
       bus.emit({ sessionId: this.#sid(), type: "command.started", callId: call.id, command: radius.command });
     }
 
+    // Which of the paths this call may write already exist, so the event can
+    // say `created` rather than calling everything `modified`. Asked through
+    // the executor rather than `node:fs`, because the container executor
+    // speaks HTTP and a direct stat here would not survive it. Only for a
+    // write with a radius, so a read or a command costs nothing.
+    const existedBefore = new Set<string>();
+    if (tool.kind === "write") {
+      for (const w of radius.writes) {
+        if (await this.o.toolContext.exec.exists(w, this.o.toolContext.opts)) existedBefore.add(w);
+      }
+    }
+
     try {
       const ctx: ToolContext = {
         ...this.o.toolContext,
@@ -293,7 +305,15 @@ export class AgentLoop {
       for (const w of radius.writes) {
         if (tool.kind === "write") {
           this.#unverified.add(w);
-          bus.emit({ sessionId: this.#sid(), type: "file.changed", path: w, change: "modified" });
+          bus.emit({
+            sessionId: this.#sid(),
+            type: "file.changed",
+            path: w,
+            // `deleted` is in the vocabulary and is not produced: no builtin
+            // tool removes a file. It stays in the union because a delete tool
+            // is the obvious next write kind, not because this can emit it.
+            change: existedBefore.has(w) ? "modified" : "created",
+          });
         }
       }
       // Running something is how a change gets checked; what it proves is the

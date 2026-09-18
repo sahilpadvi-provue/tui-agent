@@ -19,6 +19,7 @@
     "app:check": "bun run scripts/app-cells-smoke.tsx",
     "backend:check": "bun run scripts/backend-check.tsx",
     "resume:check": "bun run scripts/resume-ui-check.tsx",
+    "changed:check": "bun run scripts/changed-check.ts",
     "sessions": "bun run src/cli/sessions.ts",
     "evals": "bun run evals/run.ts",
     "build": "bun build --compile src/cli/tui.tsx --outfile dist/tui --external react-devtools-core && bun build --compile src/cli/headless.ts --outfile dist/agent"

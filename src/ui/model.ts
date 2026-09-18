@@ -21,6 +21,14 @@ export type ViewItem =
       result?: string;
       ok?: boolean;
       running: boolean;
+      /**
+       * What the call did to the workspace, in the order reported.
+       *
+       * The distinction a reader actually wants scrolling back a session is
+       * read versus write, and it cannot be recovered from `name` or `result`:
+       * both a read and a write end as a green tick over a bold verb.
+       */
+      changed?: readonly { path: string; change: "created" | "modified" | "deleted" }[];
     }
   | { kind: "error"; text: string }
   | { kind: "compaction"; dropped: number; summary: string }
@@ -121,6 +129,25 @@ export function reduce(s: ViewState, action: ViewAction): ViewState {
         })),
       };
 
+    /**
+     * Attached to the last tool, because the event carries no `callId`.
+     *
+     * Sound rather than convenient: the loop emits strictly sequentially and
+     * `file.changed` is emitted between `tool.started` and `tool.result`, so
+     * the last tool item is the one that is still running. "Only the last item
+     * can be live" is already load-bearing here and `scripts/resize-check.tsx`
+     * guards it. If that ever stops holding, this misattributes rather than
+     * crashes -- so the gate below asserts the attachment, not just the count.
+     */
+    case "file.changed": {
+      const at = lastIndex(items, (i) => i.kind === "tool");
+      if (at === -1) return s;
+      const tool = items[at] as Extract<ViewItem, { kind: "tool" }>;
+      const next = [...items];
+      next[at] = { ...tool, changed: [...(tool.changed ?? []), { path: e.path, change: e.change }] };
+      return { ...s, items: next };
+    }
+
     case "permission.requested":
       return { ...s, pending: { requestId: e.requestId, tool: e.tool, radius: e.blastRadius } };
     case "permission.resolved":
@@ -161,6 +188,11 @@ function patch(items: ViewItem[], match: (i: ViewItem) => boolean, fn: (i: ViewI
   const next = items.slice();
   next[idx] = fn(items[idx]!);
   return next;
+}
+
+function lastIndex(items: ViewItem[], match: (i: ViewItem) => boolean): number {
+  for (let i = items.length - 1; i >= 0; i--) if (match(items[i]!)) return i;
+  return -1;
 }
 
 function patchTool(items: ViewItem[], callId: string, fn: (t: Extract<ViewItem, { kind: "tool" }>) => ViewItem): ViewItem[] {
