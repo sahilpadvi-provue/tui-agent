@@ -51,23 +51,54 @@ tried, and it cost the composer's border and the footer's right edge -- or to
 own the cells. A renderer that addresses rows has no erase-by-line-count step
 to miscount.
 
-Ink remains a dev dependency so `scripts/render-check.tsx` can drive it as a
-control arm on the same frames, which makes the difference a measurement
-rather than a claim.
+Ink remains a dev dependency, for two jobs. `scripts/render-check.tsx` drives
+it as a control arm on the same frames, which makes the difference above a
+measurement rather than a claim. And it is the second implementation of the
+renderer contract, which is what keeps that contract honest.
 
-The switch cost one file. `src/ui/primitives.tsx` is the only module that knows
-how a frame reaches the terminal, and `App.tsx` did not change a line.
-
-What it also bought, measured on the same 500-message transcript:
+What the cutover also bought, measured on the same 500-message transcript:
 
 |  | Ink | cells |
 | --- | --- | --- |
 | bytes written | 1.49 MB | 0.05 MB |
-| heap after | 56.8 MB | 15.3 MB |
+
+A heap comparison was recorded here too and has been removed: `bench.tsx` heap
+is noise-dominated, and three runs on one tree span 19 to 47 MB. It measured
+the garbage collector, not the renderer.
 
 Still a subset. The key parser covers what the app reads and is gated, but it
 is not Ink's four hundred lines: a key nobody has asked for yet will not work
 until someone adds it.
+
+## Swapping the renderer
+
+The UI is written against `src/ui/primitives.tsx` -- `Stack`, `Label`,
+`Settled` and four hooks -- and nothing there knows what a terminal is. The
+renderer behind it is a `Backend` (`src/ui/backend.ts`), chosen at `mount` and
+read from React context.
+
+The contract is two components, `Settled`, `mount`, four hooks and
+`renderToText`, and it is that small because that is all `App` uses: 43
+`Label`s, 9 `Stack`s and one `Settled`. A new renderer is one file in
+`src/ui/backends/`; `primitives.tsx` and `App.tsx` do not move.
+
+There are two backends because a contract with one implementation behind it is
+a guess. `backends/cells.tsx` is the default and ships; `backends/ink.tsx` is
+dev-only, and `bun run backend:check` holds both to the same screen on every
+run -- for a synthetic tree and for the real `App`. It earned that place
+immediately, catching a wrapper bug where a rerender changed the root element's
+type, remounted the tree and silently reset every piece of UI state.
+
+Two divergences are recorded rather than smoothed over. `Settled` must be the
+tree's first child, because Ink implements it with `Static`, which prepends to
+the frame instead of placing it in tree order. And `align="between"` differs by
+two columns, because a flex engine subtracts the container's padding from the
+free space it distributes while the line model fills to the terminal edge --
+the only row of the real `App` the two backends do not match exactly.
+
+The indirection costs about 6% of streaming throughput (2997 against 2806
+deltas/sec, three runs each): one extra fiber per element, plus a context read.
+Bytes written and frame count are unchanged.
 
 ## Commands
 
@@ -101,7 +132,9 @@ bun run build      # dist/tui and dist/agent, ~60 MB each
 Both are standalone: verified running a real task with neither Bun nor
 `node_modules` present. Ink pulls in `react-devtools-core` lazily, which the
 compiler cannot resolve, so it is marked external — it is a development-only
-path and is never reached in a built binary.
+path and is never reached in a built binary. Nothing in `src/` imports the Ink
+backend, so neither it nor Ink is in the binary: `dist/tui` carries `tui-box`
+and none of `ink-box`, `cli-boxes` or `inkBackend`.
 
 ## Layout
 
@@ -119,7 +152,9 @@ src/
   model/     client.ts   what the loop needs from a model
              ollama.ts   Ollama adapter (stands in for the gateway)
   permissions/policy.ts  tiered policy + category deny rules
-  ui/        primitives.tsx  the ONLY module importing Ink
+  ui/        backend.ts      the renderer contract
+             backends/       one file per renderer (cells ships, ink is dev-only)
+             primitives.tsx  the surface screens are written against
              model.ts        view state as a fold over events
              App.tsx         the screen
   cli/       headless.ts     stage 1 driver (no UI)
@@ -134,8 +169,10 @@ the loop, the executor or the model. This is what makes a second client cheap
 later, and `bun run agent` is the standing proof it still holds: the same
 runtime completes tasks with no UI mounted at all.
 
-**Only `ui/primitives.tsx` imports Ink.** Swapping renderers is a rewrite of
-that one file.
+**No screen knows how a frame reaches the terminal.** Screens import
+`ui/primitives.tsx`; only a backend in `ui/backends/` imports a renderer.
+Swapping renderers is writing one more file there, and `bun run backend:check`
+is what proves the boundary held.
 
 ## Gates
 
@@ -155,6 +192,7 @@ that one file.
 | Resizing does not reprint, and the live region stays bounded | `bun run scripts/resize-check.tsx` | passing |
 | Sandbox blocks writes and egress | `bun run scripts/sandbox-check.ts` | passing |
 | Checkpoint restores a damaged file | `bun run scripts/checkpoint-check.ts` | passing |
+| Every renderer backend draws the same screen | `bun run backend:check` | passing |
 
 ## Editing with small models
 

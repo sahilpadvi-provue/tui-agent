@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { Stack, Label, Settled, useKeys, usePaste, useStdout, useApp, type Color } from "./primitives.tsx";
+import { Stack, Label, Settled, useKeys, usePaste, useColumns, useApp } from "./primitives.tsx";
+import type { Color } from "./backend.ts";
 import { reduce, initialState, cleared, type ViewItem } from "./model.ts";
 import { Markdown } from "./markdown.tsx";
 import { bannerLines } from "./banner.ts";
@@ -70,7 +71,7 @@ export function App({
   const pasted = useRef(0);
   const startedAt = useRef<number | null>(null);
   const wasBusy = useRef(false);
-  const { stdout } = useStdout();
+  const term = useColumns();
   const { exit } = useApp();
 
   // The only connection to the runtime: a subscription. No calls in, ever.
@@ -319,8 +320,6 @@ export function App({
     const lines = (pastes.current.get(mark) ?? "").split("\n").length;
     return `[Pasted text #${pasteId(mark)} +${lines} lines]`;
   };
-
-  const term = stdout?.columns ?? 80;
 
   const matchingCommands = input.startsWith("/")
     ? COMMANDS.filter((c) => c.name.startsWith(input.slice(1).split(" ")[0] ?? ""))

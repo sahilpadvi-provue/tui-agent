@@ -12,24 +12,9 @@
  * here claims to be finished.
  */
 
-export type Key = {
-  ctrl: boolean;
-  meta: boolean;
-  shift: boolean;
-  escape: boolean;
-  return: boolean;
-  backspace: boolean;
-  delete: boolean;
-  upArrow: boolean;
-  downArrow: boolean;
-  leftArrow: boolean;
-  rightArrow: boolean;
-  tab: boolean;
-  home: boolean;
-  end: boolean;
-};
+import type { Key, KeyEvent } from "../backend.ts";
 
-export type KeyEvent = { char: string; key: Key };
+export type { Key, KeyEvent };
 
 const NONE: Key = {
   ctrl: false, meta: false, shift: false, escape: false, return: false,

@@ -1,5 +1,6 @@
 import React, { type ReactNode } from "react";
-import { Label, type Color } from "./primitives.tsx";
+import { Label } from "./primitives.tsx";
+import type { Color } from "./backend.ts";
 
 /**
  * Inline markdown for terminal output.

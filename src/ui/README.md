@@ -4,29 +4,43 @@ The terminal client. One subscriber to the event bus among several that could ex
 
 ## What lives here
 
+- **`backend.ts`** — the renderer contract, and the vocabulary (`Color`, `Key`) both sides share.
+- **`backends/`** — one file per renderer. `cells.tsx` is the default and ships; `ink.tsx` is the second implementation and the control arm.
+- **`primitives.tsx`** — the surface every screen is written against. Knows nothing about terminals.
 - **`layout.ts`** — the spacing system, the `Span` type, and the tool verbs. Every column and blank row on screen comes from here.
-- **`primitives.tsx`** — the only module that imports `ink`.
 - **`model.ts`** — view state as a fold over the event stream.
 - **`markdown.tsx`** — inline markdown, so models' `**bold**` is not shown raw.
 - **`App.tsx`** — the screen.
 
 ## Rules
 
-**Only `primitives.tsx` knows how a frame reaches the terminal.** Every screen is written against `Stack`, `Label` and our hooks. That is what made replacing Ink a rewrite of one file rather than of the UI, and `App.tsx` did not change a line for it. It survives only if nobody reaches past it. Check imports in review.
+**No screen knows how a frame reaches the terminal.** Every screen is written against `Stack`, `Label`, `Settled` and four hooks. Which renderer is behind them is a `Backend`, picked at `mount` and read from context, so a new renderer is a new file in `backends/` and nothing else moves. It survives only if nobody reaches past it: `primitives.tsx` and the backends are the only modules that may import `render/` or `ink`. Check imports in review.
 
-**The renderer is ours now, in `render/`.** A grid the height of the content, with the terminal as a window onto its last rows; rows above that window are never addressed, so settled output still lands in the terminal's own scrollback. There is no erase-by-line-count step, which is what ink#907 was, so narrowing cannot leave ghosts. Ink remains a dev dependency purely so `scripts/render-check.tsx` can drive it as a control arm and show the difference rather than assert it.
+**The contract is two elements and four hooks**, because that is all `App` uses: 43 `Label`s, 9 `Stack`s, one `Settled`, and `useKeys` / `usePaste` / `useColumns` / `useApp`. Anything wider is a renderer feature leaking into the screens.
+
+**`Settled` must be the tree's first child.** Ink implements it with `Static`, which prepends its output to the frame rather than placing it in tree order, so anywhere else the two backends draw different screens. `scripts/backend-check.tsx` asserts both halves of that — they agree with it first, they disagree with it elsewhere — so the rule cannot be dropped as arbitrary.
+
+**`useColumns` hands out the width, not the stream.** It used to be `useStdout`, and callers read `.columns` off `process.stdout`. That was the one member of this surface that named a mechanism rather than a need, and the only one a renderer without a Node stream behind it could not have satisfied.
+
+**The default renderer is ours, in `render/`.** A grid the height of the content, with the terminal as a window onto its last rows; rows above that window are never addressed, so settled output still lands in the terminal's own scrollback. There is no erase-by-line-count step, which is what ink#907 was, so narrowing cannot leave ghosts.
+
+**Ink is the second implementation, and that is the point.** A contract with one renderer behind it is a guess. `backends/ink.tsx` keeps it honest on every run through `backend:check`, and `scripts/render-check.tsx` still drives it as the control arm that shows the ghosting difference rather than asserting it. Ink is a dev dependency and nothing in `src/` imports that backend, so the shipped binary carries neither.
+
+**A rerender must re-apply the backend provider.** Handing the backend a bare node changes the root element's type, and React answers that by unmounting the tree and building a new one — every piece of UI state, including a queued instruction, silently resets. It looks like a redraw. `scripts/queue-check.tsx` caught it and `backend:check` now guards it on both backends.
+
+**Known divergence: elastic fill.** `align="between"` differs by two columns between the two backends, because a flex engine subtracts the container's `padX` from the free space it distributes while the line model fills to the terminal edge. Measured, not a bug either side, and the only row of the real `App` the two do not match byte for byte.
 
 **The UI never calls the runtime.** It subscribes to the bus and receives `onSubmit` / `onCancel` / `onPermission` from `cli/`. It holds no reference to the loop, executor or model.
 
 **Only the last item can be live.** The loop emits strictly sequentially, so once a later item exists the one before it is finished, whatever its own flags say. An earlier rule stopped at the first item that did not *look* finished, which let one reasoning block without its completion event pin every item after it in the live region — and that region is redrawn whole each frame, so it grew past the terminal height and Ink could no longer erase what it had drawn. `scripts/resize-check.tsx` guards it.
 
-**Settled output is append-only.** Items that can no longer change go to `Settled` (Ink's `Static`) and are printed once, never redrawn. `countSettled` stops at the first live item so the list only ever grows. Re-keying or reordering it reprints the whole transcript — the documented way agent TUIs collapse.
+**Settled output is append-only.** Items that can no longer change go to `Settled` and, under the Ink backend, are printed once and never redrawn. `countSettled` stops at the first live item so the list only ever grows. Re-keying or reordering it reprints the whole transcript — the documented way agent TUIs collapse.
 
 **The conversation still lives in `model.ts`, not the terminal.** Scrollback is where settled output is *displayed*; the event log remains the source of truth. Never read state back off the screen.
 
 **Full-width chrome is fine now, and that is the point of the renderer.** The composer's two rules are the width of the terminal, which under Ink was exactly what leaked on every narrowing: it erased its last frame by logical line count while the terminal had already re-wrapped to physical rows. Removing the chrome fixed it and was rejected on how it looked. Owning the cells fixed it without that trade. `scripts/reflow-check.tsx` measured the old defect and is gone with it; `scripts/render-check.tsx` now shows the difference with Ink driven as a control arm.
 
-**Inline, not alternate screen.** Settled output is printed once into the user's own scrollback, where they can scroll, search and copy it with the terminal they already know. An app that owns the whole screen cannot hand its history back. The accepted cost is ink#907: narrowing the terminal can leave ghost lines, and there is no upstream fix.
+**Inline, not alternate screen.** Settled output is printed once into the user's own scrollback, where they can scroll, search and copy it with the terminal they already know. An app that owns the whole screen cannot hand its history back. Under Ink this cost ink#907 — narrowing the terminal left ghost lines, with no upstream fix — which is what owning the cells removed.
 
 **No fixed-height panes.** The app occupies exactly the rows it needs. Anything that reserves full height produces an empty band between the content and the prompt.
 

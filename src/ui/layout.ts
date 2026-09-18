@@ -7,7 +7,7 @@
  * not join them.
  */
 
-import type { Color } from "./primitives.tsx";
+import type { Color } from "./backend.ts";
 
 /**
  * Columns of left page padding.

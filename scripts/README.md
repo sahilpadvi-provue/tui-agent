@@ -14,6 +14,7 @@ Gate scripts. Each one is a claim about the system that can fail loudly.
 | `resume-check.ts` | A resumed session carries its history, continues its sequence, and refuses the wrong tree |
 | `log-equivalence.tsx` | Mounting the UI changes nothing the runtime records |
 | `queue-check.tsx` | Typing is never blocked; Enter queues and the queue flushes on idle |
+| `backend-check.tsx` | Every renderer backend draws the same screen, for the synthetic tree and for the real `App` |
 | `frame-dump.tsx` | Not a gate — prints the rendered frame line by line, for layout work |
 
 ## Rules
@@ -26,5 +27,5 @@ Run the one covering what you changed. Run all before calling phase work done.
 
 ## Gotchas
 
-- `bench.tsx` and `ui-smoke.tsx` need fake `stdin` with `isTTY: true` and a `setRawMode` stub, or Ink throws on `useInput`.
+- Anything that mounts needs fake `stdin` with `isTTY: true` and a `setRawMode` stub, or no key ever arrives -- and under the Ink backend `useInput` throws outright.
 - `bench.tsx` reports low stdout volume because the viewport slices a data array. That is the result being measured, not a flaw in the measurement.

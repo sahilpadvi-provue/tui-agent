@@ -6,14 +6,14 @@ Architecture rationale lives in the `Agentic Coding Platform: Foundation Researc
 
 ## Stack
 
-TypeScript strict on Bun. Our own cell renderer for the terminal UI, on React 19 via react-reconciler; Ink 7 stays as a dev dependency, driven as a control arm by `scripts/render-check.tsx`. Ollama for models (stands in for the gateway). SQLite via `bun:sqlite` planned for the session index; the log itself is plain JSONL. No linter. Verification is `bun x tsc --noEmit`, the gate scripts, and `bun test` for the pure modules (`editor.ts`, `layout.ts` today). The gates prove behaviour end to end and are the primary check; unit tests complement them at the units under the UI, they do not replace them.
+TypeScript strict on Bun. Our own cell renderer for the terminal UI, on React 19 via react-reconciler, behind the renderer contract in `src/ui/backend.ts`; Ink 7 stays as a dev dependency, as the second backend and as the control arm in `scripts/render-check.tsx`. Ollama for models (stands in for the gateway). SQLite via `bun:sqlite` planned for the session index; the log itself is plain JSONL. No linter. Verification is `bun x tsc --noEmit`, the gate scripts, and `bun test` for the pure modules (`editor.ts`, `layout.ts` today). The gates prove behaviour end to end and are the primary check; unit tests complement them at the units under the UI, they do not replace them.
 
 ## Invariants
 
 These five are not style preferences. Breaking one costs a rewrite later.
 
 1. **The UI never calls the runtime.** It subscribes to the bus and receives `onSubmit` / `onCancel` / `onPermission`. It holds no reference to the loop, executor or model. `bun run agent` is the standing proof: the same runtime completes tasks with no UI mounted. If that stops working, the boundary is already gone.
-2. **Only `src/ui/primitives.tsx` knows how a frame reaches the terminal.** Everything else imports our `Stack` / `Label` / hooks. That invariant is why replacing Ink cost one file: it now drives the cell renderer in `src/ui/render/`, and `App` did not change. Keep it that way, and the next renderer costs the same.
+2. **No screen knows how a frame reaches the terminal.** Everything else imports our `Stack` / `Label` / `Settled` / hooks from `src/ui/primitives.tsx`; the renderer behind them is a `Backend` (`src/ui/backend.ts`), picked at `mount`. That invariant is why replacing Ink cost one file, and a renderer is now one file in `src/ui/backends/` with `App` untouched. Ink is kept as the second implementation so the contract is checked rather than assumed: `bun run backend:check` holds every backend to the same screen.
 3. **The event log is append-only and is the source of truth.** Never delete or rewrite an event. Compaction *hides* events by seq and `context.restored` un-hides them — that is what makes it reversible, and it is the product's main differentiator.
 4. **The executor interface stays async and stream-shaped**, even where local execution does not need it. The container backend (phase 2) speaks HTTP; a synchronous signature here would force every caller to change.
 5. **No wire protocol until a second client exists.** No JSON-RPC, no WebSocket, no published schema, no version negotiation. The in-process bus preserves the option without paying for it.
@@ -137,6 +137,7 @@ bun run input:check                                    # keys, runs of typing, b
 bun run colour:check                                   # no 24-bit colour on a terminal without it
 bun run md:check                                       # emphasis survives the renderer
 bun run scripts/keys-check.tsx                         # every key binding edits what it claims to
+bun run backend:check                                  # every renderer backend draws the same screen
 ```
 
 ## Attribution

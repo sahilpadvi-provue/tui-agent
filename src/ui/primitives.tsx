@@ -1,55 +1,35 @@
 /**
- * The ONLY module that knows how a frame reaches the terminal.
+ * The surface every screen is written against.
  *
- * Every screen is written against `Stack`, `Label` and these hooks, which is
- * what made replacing Ink a rewrite of this file rather than of the UI. It now
- * drives the cell renderer in `./render`: a grid the height of the content,
- * with the terminal as a window onto its last rows. Nothing above that window
- * is ever addressed, so settled output still reaches the terminal's own
- * scrollback, and a resize cannot leave a stack of ghosts behind -- there is
- * no erase-by-line-count step to miscount, which is what ink#907 was.
+ * `Stack`, `Label`, `Settled` and four hooks, and nothing here knows how a
+ * frame reaches the terminal -- that is a `Backend`, chosen at `mount` and
+ * read from context by everything below it. Swapping renderers is writing one
+ * more file in `backends/`; this file and `App.tsx` do not move.
  *
- * Ink is still a dependency, for the gate that drives it as a control.
+ * Context rather than a module-level global on purpose. A global would have to
+ * be set before the first import to be reliable, which makes the choice a
+ * property of module load order, and it would put two backends in the shipped
+ * binary to allow a switch nothing at runtime asks for.
  */
 
-import React, {
-  createContext, useContext, useEffect, useMemo, useRef, useState,
-  type ReactNode,
-} from "react";
-import { LegacyRoot } from "react-reconciler/constants.js";
-import { createRoot, reconciler, toLines, type Root } from "./render/host.ts";
-import { paint, type Screen } from "./render/screen.ts";
-import { renderFrame, HIDE_CURSOR, SHOW_CURSOR } from "./render/diff.ts";
-import {
-  Parser, ENABLE_PASTE, DISABLE_PASTE, type Key, type KeyEvent,
-} from "./render/input.ts";
+import React, { createContext, useContext, type ReactNode } from "react";
+import type {
+  Backend, Color, Instance, Key, MountOptions as BackendMountOptions, SettledProps,
+} from "./backend.ts";
+import { cellsBackend } from "./backends/cells.tsx";
 
-declare module "react" {
-  namespace JSX {
-    interface IntrinsicElements {
-      "tui-box": {
-        children?: ReactNode;
-        direction?: "row" | "column";
-        padX?: number;
-        border?: boolean;
-        borderColor?: string;
-        borderDim?: boolean;
-        align?: "start" | "end" | "between";
-      };
-      "tui-text": {
-        children?: ReactNode;
-        color?: string;
-        bg?: string;
-        dim?: boolean;
-        bold?: boolean;
-        italic?: boolean;
-      };
-    }
-  }
+export type { Color, Instance, Key };
+
+const BackendContext = createContext<Backend>(cellsBackend);
+
+/**
+ * The hooks below call a hook taken from context, which is only sound because
+ * the backend cannot change for the life of a mount: `mount` fixes it and the
+ * provider value is never replaced. Nothing here may become conditional.
+ */
+function useBackend(): Backend {
+  return useContext(BackendContext);
 }
-
-import type { Color } from "./render/types.ts";
-export type { Color };
 
 export type StackProps = {
   children?: ReactNode;
@@ -65,21 +45,9 @@ export type StackProps = {
   align?: "start" | "end" | "between";
 };
 
-export function Stack({
-  children, direction = "column", padX, border, borderColor, borderDim, align,
-}: StackProps) {
-  return (
-    <tui-box
-      direction={direction}
-      padX={padX}
-      border={border}
-      borderColor={borderColor}
-      borderDim={borderDim}
-      align={align}
-    >
-      {children}
-    </tui-box>
-  );
+export function Stack({ borderSides: _ignored, children, ...rest }: StackProps) {
+  const { Box } = useBackend();
+  return <Box {...rest}>{children}</Box>;
 }
 
 export type LabelProps = {
@@ -91,202 +59,70 @@ export type LabelProps = {
   italic?: boolean;
 };
 
-export function Label({ children, color, bg, dim, bold, italic }: LabelProps) {
-  return (
-    <tui-text color={color} bg={bg} dim={dim} bold={bold} italic={italic}>
-      {children}
-    </tui-text>
-  );
+export function Label({ children, ...rest }: LabelProps) {
+  const { Text } = useBackend();
+  return <Text {...rest}>{children}</Text>;
 }
 
-/**
- * No separate append-only channel.
- *
- * Ink's `Static` exists because a printed row is unrecoverable, so anything
- * settled has to leave the tree. Here the grid keeps every row and the diff
- * declines to address the ones above the viewport, which reaches the same
- * place by not needing the mechanism.
- */
-export function Settled<T>({
-  items,
-  render,
-}: {
-  items: T[];
-  render: (item: T, index: number) => ReactNode;
-}) {
-  return <tui-box direction="column">{items.map((item, i) => render(item, i))}</tui-box>;
-}
-
-
-type Session = {
-  out: NodeJS.WriteStream;
-  /** Mirrors `out.columns`, so a resize changes the context value itself. */
-  columns?: number;
-  exit: () => void;
-  keys: Set<(e: KeyEvent) => void>;
-  pastes: Set<(text: string) => void>;
-};
-
-const SessionContext = createContext<Session | null>(null);
-
-function useSession(): Session {
-  const s = useContext(SessionContext);
-  if (!s) throw new Error("hook used outside mount()");
-  return s;
-}
-
-/**
- * Width is read during render, so a resize has to re-render rather than just
- * repaint -- every wrapped line and every elastic field is derived from it.
- *
- * The width therefore goes into the context value, and a resize replaces that
- * value. Bumping a counter here instead re-renders only this component:
- * `children` is the same element on the way back out, React bails out of the
- * subtree, no host node changes and nothing repaints. The symptom is narrow
- * and easy to miss -- on an idle screen a resize does nothing until the next
- * keystroke, while anything with a timer running looks fine, because its next
- * tick re-renders and picks the new width up. `scripts/quiet-resize-check.tsx`
- * is the guard, and it asserts on a component that has no other reason to
- * render, which is the only arrangement that can tell the two apart.
- */
-function Session({ value, children }: { value: Session; children: ReactNode }) {
-  const [columns, setColumns] = useState(value.out.columns);
-  useEffect(() => {
-    const onResize = () => setColumns(value.out.columns);
-    value.out.on("resize", onResize);
-    return () => {
-      value.out.off("resize", onResize);
-    };
-  }, [value]);
-  const session = useMemo(() => ({ ...value, columns }), [value, columns]);
-  return <SessionContext.Provider value={session}>{children}</SessionContext.Provider>;
-}
-
-/** Subscribes once and calls through a ref, so a new closure each render is free. */
-function useSubscription<T>(set: Set<(v: T) => void>, fn: (v: T) => void): void {
-  const ref = useRef(fn);
-  ref.current = fn;
-  useEffect(() => {
-    const call = (v: T) => ref.current(v);
-    set.add(call);
-    return () => {
-      set.delete(call);
-    };
-  }, [set]);
+export function Settled<T>(props: SettledProps<T>) {
+  const Impl = useBackend().Settled;
+  return <Impl {...props} />;
 }
 
 export function useKeys(fn: (char: string, key: Key) => void): void {
-  useSubscription(useSession().keys, (e: KeyEvent) => fn(e.char, e.key));
+  useBackend().useKeys(fn);
 }
 
 export function usePaste(fn: (text: string) => void): void {
-  useSubscription(useSession().pastes, fn);
+  useBackend().usePaste(fn);
 }
 
-export function useStdout(): { stdout: NodeJS.WriteStream } {
-  return { stdout: useSession().out };
+/**
+ * The width, not the stream.
+ *
+ * This used to hand out `process.stdout` and let callers read `.columns` off
+ * it, which was the one part of this surface that named a mechanism rather
+ * than a need -- and the only member a renderer without a Node stream behind
+ * it could not have satisfied.
+ */
+export function useColumns(): number {
+  return useBackend().useColumns();
 }
 
 export function useApp(): { exit: () => void } {
-  return { exit: useSession().exit };
+  return { exit: useBackend().useExit() };
 }
 
-export type Instance = {
-  rerender: (node: ReactNode) => void;
-  unmount: () => void;
-  waitUntilExit: () => Promise<void>;
-};
-
-export type MountOptions = {
-  stdout?: NodeJS.WriteStream;
-  stdin?: NodeJS.ReadStream;
-  /** Called once per frame actually written. `scripts/bench.tsx` counts them. */
-  onRender?: () => void;
+export type MountOptions = BackendMountOptions & {
+  /** Defaults to the cell renderer. `scripts/backend-check.tsx` passes Ink. */
+  backend?: Backend;
 };
 
 export function mount(node: ReactNode, options: MountOptions = {}): Instance {
-  const out = options.stdout ?? process.stdout;
-  const input = options.stdin ?? process.stdin;
-
-  const root: Root = createRoot();
-  const container = reconciler.createContainer(
-    root, LegacyRoot, null, false, null, "tui", () => {}, () => {}, () => {}, null,
+  const backend = options.backend ?? cellsBackend;
+  const wrap = (n: ReactNode) => (
+    <BackendContext.Provider value={backend}>{n}</BackendContext.Provider>
   );
-
-  let prev: Screen | null = null;
-  let scheduled = false;
-  let unmounted = false;
-  let done = () => {};
-  const exited = new Promise<void>((r) => { done = r; });
-
-  const draw = () => {
-    scheduled = false;
-    // Unmounting empties the tree, and painting that erases the final frame --
-    // which for an inline renderer means the session wipes itself on exit.
-    if (unmounted) return;
-    const next = paint(toLines(root), out.columns ?? 80);
-    out.write(renderFrame(prev, next, out.rows ?? 24));
-    prev = next;
-    options.onRender?.();
+  const instance = backend.mount(wrap(node), options);
+  // A rerender has to re-apply the provider. Handing the backend a bare node
+  // changes the root element's type, and React answers that by unmounting the
+  // tree and building a new one -- every piece of UI state, including a queued
+  // instruction, silently resets. `scripts/queue-check.tsx` is what caught it.
+  return {
+    rerender: (next) => instance.rerender(wrap(next)),
+    unmount: () => instance.unmount(),
+    waitUntilExit: () => instance.waitUntilExit(),
   };
+}
 
-  // React commits synchronously here, and a single update can commit more than
-  // once; coalescing to a microtask keeps one frame per turn of the loop.
-  root.onRender = () => {
-    if (scheduled) return;
-    scheduled = true;
-    queueMicrotask(draw);
-  };
-
-  const session: Session = {
-    out,
-    exit: () => instance.unmount(),
-    keys: new Set(),
-    pastes: new Set(),
-  };
-
-  const parser = new Parser();
-  const onData = (chunk: Buffer | string) => {
-    const { events, pastes } = parser.push(String(chunk));
-    for (const e of events) for (const fn of [...session.keys]) fn(e);
-    for (const text of pastes) for (const fn of [...session.pastes]) fn(text);
-  };
-
-  const raw = input.isTTY === true;
-  if (raw) {
-    input.setRawMode(true);
-    input.resume();
-    input.on("data", onData);
-    out.write(ENABLE_PASTE);
-  }
-  out.write(HIDE_CURSOR);
-
-  const rerender = (next: ReactNode) => {
-    reconciler.updateContainerSync(
-      <Session value={session}>{next}</Session>, container, null, null,
-    );
-    reconciler.flushSyncWork();
-  };
-
-  const instance: Instance = {
-    rerender,
-    unmount() {
-      if (unmounted) return;
-      unmounted = true;
-      reconciler.updateContainerSync(null, container, null, null);
-      reconciler.flushSyncWork();
-      if (raw) {
-        input.off("data", onData);
-        input.setRawMode(false);
-        input.pause();
-        out.write(DISABLE_PASTE);
-      }
-      out.write(SHOW_CURSOR + "\n");
-      done();
-    },
-    waitUntilExit: () => exited,
-  };
-
-  rerender(node);
-  return instance;
+/** One frame as plain rows. How a backend is compared to another, and to itself. */
+export function renderToText(
+  node: ReactNode,
+  columns: number,
+  backend: Backend = cellsBackend,
+): string[] {
+  return backend.renderToText(
+    <BackendContext.Provider value={backend}>{node}</BackendContext.Provider>,
+    columns,
+  );
 }

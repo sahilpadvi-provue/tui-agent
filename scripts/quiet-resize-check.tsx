@@ -13,7 +13,7 @@
  */
 import React, { useState } from "react";
 import { PassThrough, Writable } from "node:stream";
-import { mount, useKeys, useStdout, Label, Stack } from "../src/ui/primitives.tsx";
+import { mount, useKeys, useColumns, Label, Stack } from "../src/ui/primitives.tsx";
 
 let failures = 0;
 const check = (name: string, ok: boolean, detail = "") => {
@@ -22,10 +22,10 @@ const check = (name: string, ok: boolean, detail = "") => {
 };
 
 function Quiet() {
-  const { stdout } = useStdout();
+  const columns = useColumns();
   const [n, setN] = useState(0);
   useKeys(() => setN((v) => v + 1));
-  return <Stack><Label>{`width ${stdout.columns} n ${n}`}</Label></Stack>;
+  return <Stack><Label>{`width ${columns} n ${n}`}</Label></Stack>;
 }
 
 let out = "";
