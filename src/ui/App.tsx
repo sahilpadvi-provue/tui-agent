@@ -144,12 +144,40 @@ export function App({
   // The wave through "working" runs faster than the clock: a second is long
   // enough to look stopped. It is decoration, so it goes through `motion` and
   // disappears under NO_MOTION.
-  const phase = usePhase(busy ? motion(SHIMMER_MS) : null);
+  /**
+   * Subscribed exactly where it is drawn.
+   *
+   * Both rows are hidden while a permission is pending, and a subscription
+   * that outlives what it animates keeps a timer alive for a decision that can
+   * take minutes -- repainting the whole transcript every quantum to show a
+   * row nobody is rendering. The screen looked still; the clock was not.
+   */
+  const working = busy && !state.pending;
+  const phase = usePhase(working ? motion(SHIMMER_MS) : null);
+  /**
+   * One sweep of the border when a prompt arrives, then still.
+   *
+   * The keystroke guard cannot tell a deliberate `y` after a pause from an
+   * answer, so the thing that closes that gap is making the prompt visibly
+   * *new* rather than merely present -- and the reader it has to reach is one
+   * whose attention is on their own typing, which no static treatment gets to.
+   * It stops of its own accord: when the count reaches zero nothing is
+   * subscribed and the screen is genuinely still.
+   */
+  const [arriving, setArriving] = useState(0);
+  const arrival = usePhase(arriving > 0 ? motion(TICK_MS) : null);
+  const requestId = state.pending?.requestId;
+  useEffect(() => {
+    if (requestId) setArriving(ARRIVAL_STEPS);
+  }, [requestId]);
+  useEffect(() => {
+    setArriving((n) => (n > 0 ? n - 1 : n));
+  }, [arrival]);
 
   // A local model can think for minutes. Without a clock the screen is
   // indistinguishable from a hang, and the first instinct is to kill it -- so
   // this is information rather than decoration and NO_MOTION leaves it alone.
-  const second = usePhase(busy ? 1000 : null);
+  const second = usePhase(working ? 1000 : null);
   useEffect(() => {
     if (!busy) {
       startedAt.current = null;
@@ -553,7 +581,13 @@ export function App({
         ))}
 
         {state.pending ? (
-          <Stack direction="column" padX={GUTTER} border borderSides="y" borderColor="yellow">
+          <Stack
+            direction="column"
+            padX={GUTTER}
+            border
+            borderSides="y"
+            borderColor={arriving > 0 && (ARRIVAL_STEPS - arriving) % 4 < 2 ? "white" : "yellow"}
+          >
             {/* The tool's name is what the transcript two rows up already
                 says, and it is not what is being decided. The command is. */}
             <Label>
@@ -715,6 +749,9 @@ const BAND = "#2a2a2a";
 
 /** Light enough to read as the terminal's own cursor rather than a highlight. */
 const CURSOR = "#c8c8c8";
+
+/** Two pulses of the border, then done. Eight quanta is a little over half a second. */
+const ARRIVAL_STEPS = 8;
 
 /** Width of the command column, so the descriptions line up. */
 const NAME_COLUMN = 22;

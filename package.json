@@ -18,6 +18,7 @@
     "md:check": "bun run scripts/markdown-check.ts",
     "app:check": "bun run scripts/app-cells-smoke.tsx",
     "marks:check": "bun run scripts/marks-check.tsx",
+    "motion:check": "bun run scripts/motion-check.tsx",
     "backend:check": "bun run scripts/backend-check.tsx",
     "resume:check": "bun run scripts/resume-ui-check.tsx",
     "changed:check": "bun run scripts/changed-check.ts",
