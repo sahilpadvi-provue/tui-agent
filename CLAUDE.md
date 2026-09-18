@@ -144,6 +144,7 @@ bun run backend:check                                  # every renderer backend 
 bun run resume:check                                   # resume works from the terminal client
 bun run changed:check                                  # what a call changed reaches the view model
 bun run width:check                                    # width is columns, not code units
+bun run permission:check                               # a stray keystroke cannot approve a tool
 ```
 
 ## Attribution

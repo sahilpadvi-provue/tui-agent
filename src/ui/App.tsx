@@ -88,6 +88,8 @@ export function App({
   const pasted = useRef(0);
   const startedAt = useRef<number | null>(null);
   const wasBusy = useRef(false);
+  const lastKeyAt = useRef(0);
+  const pendingSince = useRef(0);
   const term = useColumns();
   const { exit } = useApp();
 
@@ -103,6 +105,12 @@ export function App({
       dispatch(e);
     }),
   [bus]);
+
+  // When this particular request arrived, so a key already on its way to the
+  // composer is not read as an answer to it.
+  useEffect(() => {
+    if (state.pending) pendingSince.current = Date.now();
+  }, [state.pending?.requestId]);
 
   /**
    * Switching sessions replaces the screen.
@@ -223,7 +231,21 @@ export function App({
   });
 
   useKeys((char, key) => {
+    const at = Date.now();
+    const sinceLastKey = at - lastKeyAt.current;
+    // Updated for every key, including one this ignores, so a continuous run
+    // never runs out the guard by being long enough.
+    lastKeyAt.current = at;
+
     if (state.pending) {
+      // A key is an answer only if it did not arrive in the middle of typing.
+      // The prompt replaces the composer under the user's hands, so the
+      // keystroke already on its way was aimed at the sentence they were
+      // writing, not at a question they had not seen -- and `y` on a
+      // destructive command is the worst thing a stray key can mean.
+      const answering =
+        sinceLastKey >= DECIDE_GUARD_MS && at - pendingSince.current >= DECIDE_GUARD_MS;
+      if (!answering) return;
       if (char === "y") onPermission({ kind: "allow", scope: "once" });
       else if (char === "a") onPermission({ kind: "allow", scope: "session" });
       else if (char === "n" || key.escape) onPermission({ kind: "deny", reason: "declined" });
@@ -685,6 +707,24 @@ const KEY_COLUMN = 18;
 
 /** The live frame is redrawn on every keystroke, so the list is capped. */
 const PALETTE_ROWS = 8;
+
+/**
+ * How long a permission key is ignored for after typing or after the prompt.
+ *
+ * Keystrokes closer together than this are a run, and a run is someone
+ * writing rather than someone answering. The parser already batches a fast run
+ * into one event, so `char` is "yes" and never matches "y"; this covers the
+ * slow-typing case, where each character arrives on its own.
+ *
+ * It closes the in-flight keystroke and the run that follows it. It cannot
+ * close a `y` pressed deliberately after a pause, because nothing at this
+ * layer can tell that from an answer -- which is the argument for the prompt
+ * also being visibly new rather than merely present.
+ *
+ * Discarded, never queued. Queueing applies the stray key the moment the
+ * guard lifts, which is the same bug one tick later.
+ */
+const DECIDE_GUARD_MS = 250;
 
 /** The one place a depth becomes columns. */
 function Row({ line }: { line: L }) {

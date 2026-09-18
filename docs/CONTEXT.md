@@ -150,14 +150,21 @@ it. Ink is a dev dependency, now both the second backend and the control arm in
 - ~20 gate scripts in `scripts/` (`*-check`, `*-smoke`): boundary, sandbox,
   cancel, resume, checkpoint, log-equivalence, queue, commands, keys, resize,
   quiet-resize, colour, markdown, input, render, host, app, quit, backend,
-  resume-ui, changed, width, ui-smoke. These are the primary check; they prove
-  behaviour end to end. All 22 runnable ones pass as of this writing.
+  resume-ui, changed, width, permission, ui-smoke. These are the primary
+  check; they prove behaviour end to end. All 23 runnable ones pass as of this
+  writing.
 - `bun test src/` — unit tests for `editor.ts` and `layout.ts` (64 tests), a
   complement to the gates, not a replacement.
 - 5 eval fixtures in `evals/`.
 
 ## Hard-won gotchas
 
+- **A prompt that replaces the composer can answer itself.** The permission
+  block took over the keyboard while the user might be mid-word, and `y` was
+  the first key it checked. Fast typing was accidentally safe because the
+  parser batches a run into one event, so `char` was "yes" and never matched
+  "y" -- which is exactly the kind of accident that makes a bug look absent.
+  Slow typing granted on the first character.
 - **`.length` is not a width.** It counts UTF-16 code units, so an emoji
   measures two and a CJK ideograph measures one, when both draw two columns.
   `clip` sliced by unit and put an orphaned high surrogate on the wire; `wrap`

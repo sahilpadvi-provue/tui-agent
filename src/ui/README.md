@@ -104,6 +104,10 @@ The session title is taken from the first request and is the only elastic field 
 
 **A placeholder must not look like text you typed.** It renders in an explicit grey rather than `dim`, because dim white stays close to white on many themes — that exact bug shipped once.
 
+**A permission prompt must not answer itself.** It replaces the composer in place, so the keystroke already on its way was aimed at the sentence the user was writing, not at a question they had not seen -- and `y` bound to allow was the first thing checked. A key counts as an answer only if it did not arrive mid-run: keystrokes closer together than `DECIDE_GUARD_MS` are someone writing, not someone answering, and the window also starts fresh when the prompt arrives. Stray keys are discarded rather than queued, because queueing applies them the moment the guard lifts. The parser's run-batching made fast typing accidentally safe already -- `char` is "yes" and never matched "y" -- so this covers the slow case, where every character arrives on its own. It cannot close a deliberate `y` after a pause, which is the argument for the prompt being visibly *new* rather than merely present.
+
+**Nothing on screen moves while the user is deciding.** Motion is gated on `busy && !state.pending`, so the working indicator stops for a permission prompt. It is the sharpest motion decision here: a screen that animates while someone weighs approving a destructive command is competing for the attention that decision needs. Anything added to the prompt must be one-shot for the same reason.
+
 ## The keyboard is never taken away
 
 A turn can run for minutes. Blocking input for that long means the next instruction has to be held in the user's head until the agent finishes, so the composer stays editable throughout: Enter queues while a turn is running, queued lines show under the working indicator, and the queue flushes when the runtime goes idle.
