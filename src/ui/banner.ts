@@ -23,7 +23,7 @@ export function bannerLines(o: {
   return [
     styled(
       0,
-      { text: "● ", color: "cyan" },
+      { text: "● ", color: "green" },
       { text: "tui-agent", bold: true },
       { text: `  ${o.version}`, dim: true },
     ),

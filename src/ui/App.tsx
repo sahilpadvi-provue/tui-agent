@@ -531,7 +531,7 @@ export function App({
 
         {busy && !state.pending && (
           <Stack direction="row" padX={GUTTER}>
-            <Label color="cyan">{"\u00b7 "}</Label>
+            <Label dim>{"\u00b7 "}</Label>
             <Label bold>
               {shimmer("working", phase).map((sp, i) => (
                 <Label key={i} color={sp.color}>{sp.text}</Label>
@@ -543,18 +543,36 @@ export function App({
 
         {queued.map((q, i) => (
           <Stack key={i} direction="row" padX={GUTTER}>
-            <Label dim>{"\u21b3 queued  "}</Label>
+            {/* A queued line is a request that has not started, so it takes
+                the request's marker rather than a glyph of its own. The word
+                stays: the marker says whose line it is, and only the word says
+                why it is sitting there. */}
+            <Label dim>{"\u203a queued  "}</Label>
             <Label dim>{clip(q, term - GUTTER - 12)}</Label>
           </Stack>
         ))}
 
         {state.pending ? (
           <Stack direction="column" padX={GUTTER} border borderSides="y" borderColor="yellow">
-            <Label bold color="yellow">{`approve ${state.pending.tool}`}</Label>
-            {radiusLines(state.pending.radius).map((l, i) => (
-              <Label key={i} dim>{clip(l, term - 4)}</Label>
-            ))}
-            <Label dim>{"[y] once    [a] session    [n] deny"}</Label>
+            {/* The tool's name is what the transcript two rows up already
+                says, and it is not what is being decided. The command is. */}
+            <Label>
+              <Label bold color="yellow">{"approve  "}</Label>
+              {state.pending.radius.command
+                ? highlightCommand(clip(state.pending.radius.command, term - 14))
+                    .map((sp, i) => (
+                      <Label key={i} color={sp.color} dim={sp.dim}>{sp.text}</Label>
+                    ))
+                : <Label bold>{state.pending.tool}</Label>}
+            </Label>
+            {/* What it will reach is the only thing here that is not already
+                on screen, so it is the only thing that needs saying twice. */}
+            {radiusLines(state.pending.radius)
+              .filter((l) => l !== state.pending?.radius.command)
+              .map((l, i) => (
+                <Label key={i} dim>{`  ${clip(l, term - 6)}`}</Label>
+              ))}
+            <Label>{"[y] once    [a] session    [n] deny or esc"}</Label>
           </Stack>
         ) : (
           <Stack
@@ -576,7 +594,7 @@ export function App({
                   {/* Only the first row is marked, and the rest are indented
                       to the marker's width so a multi-row prompt reads as one
                       block of text rather than as a list of entries. */}
-                  <Label color="cyan">{r === 0 ? "\u203a " : "  "}</Label>
+                  <Label>{r === 0 ? "\u203a " : "  "}</Label>
                   <Label>
                     {row.pieces.map((piece, i) => (
                       <Label
@@ -637,7 +655,7 @@ export function App({
               const on = i === selected;
               return (
                 <Label key={c.name}>
-                  <Label color={on ? "cyan" : undefined}>{on ? "\u203a " : "  "}</Label>
+                  <Label>{on ? "\u203a " : "  "}</Label>
                   <Label bg={on ? BAND : undefined} color="cyan" bold={on}>
                     {`/${c.name}${c.takes ? ` ${c.takes}` : ""}`.padEnd(NAME_COLUMN)}
                   </Label>
@@ -658,10 +676,10 @@ export function App({
             {SHORTCUTS.map((group) => (
               <Stack key={group.title} direction="column">
                 <Label> </Label>
-                <Label color="cyan" bold>{group.title}</Label>
+                <Label bold>{group.title}</Label>
                 {group.items.map((it) => (
                   <Label key={`${group.title}-${it.keys}`}>
-                    <Label color="yellow">{it.keys.padEnd(KEY_COLUMN)}</Label>
+                    <Label>{it.keys.padEnd(KEY_COLUMN)}</Label>
                     <Label dim>{clip(it.does, term - GUTTER - KEY_COLUMN - 2)}</Label>
                   </Label>
                 ))}
@@ -675,13 +693,13 @@ export function App({
 
         <Stack direction="row" padX={GUTTER} align="between">
           <Label>
-            <Label color="yellow">{model}</Label>
+            <Label dim>{model}</Label>
             <Label dim>{"  \u00b7  "}</Label>
-            <Label color="green">{where}</Label>
+            <Label dim>{where}</Label>
             {title && (
               <>
                 <Label dim>{"  \u00b7  "}</Label>
-                <Label color="cyan">{title}</Label>
+                <Label dim>{title}</Label>
               </>
             )}
           </Label>
@@ -867,7 +885,7 @@ function renderItem(i: ViewItem, term: number): L[] {
       return wrap(i.text, w).map((t, n) => ({
         ...styled(
           DEPTH.said,
-          n === 0 ? { text: "\u203a ", color: "cyan" } : { text: "  " },
+          n === 0 ? { text: "\u203a " } : { text: "  " },
           { text: t },
         ),
         band: true,
@@ -884,7 +902,7 @@ function renderItem(i: ViewItem, term: number): L[] {
 
     case "reasoning":
       return [{
-        text: i.done ? `thought for ${i.chars.toLocaleString()} chars` : "thinking\u2026",
+        text: `  ${i.done ? `thought for ${i.chars.toLocaleString()} chars` : "thinking\u2026"}`,
         depth: DEPTH.did,
         dim: true,
       }];
@@ -894,8 +912,30 @@ function renderItem(i: ViewItem, term: number): L[] {
       // Three weights on one line: a coloured mark carries status, the tool
       // name carries what kind of thing happened, and the argument -- the
       // longest part and the least often needed -- recedes.
-      const mark = i.running ? "\u00b7" : i.ok === false ? "\u2717" : "\u2713";
-      const markColor = i.running ? "cyan" : i.ok === false ? "red" : "green";
+      /**
+       * The mark column answers the one question a reader has scrolling back:
+       * what did it change in my files.
+       *
+       * A tick used to mean "the call returned", which is the least
+       * interesting thing on the row and made a read and a write identical --
+       * distinguishable only by four characters of English, in colour and in
+       * monochrome alike. `+` and `~` are diff vocabulary, so they need no
+       * legend, and the distinction survives with colour switched off, which
+       * is where hierarchy is supposed to live.
+       *
+       * `deleted` is in the event's union and no tool produces one, so there
+       * is deliberately no treatment for it: drawing a state that cannot occur
+       * is drawing something nobody can check.
+       */
+      const changed = i.changed ?? [];
+      const mark = i.running ? "\u00b7"
+        : i.ok === false ? "\u2717"
+        : changed.length === 0 ? "\u2713"
+        : changed.some((c) => c.change === "created") ? "+"
+        : "~";
+      // Running is not a name, and cyan means a name. The mark recedes until
+      // it can say something: the shimmer two rows down already says alive.
+      const markColor = i.running ? undefined : i.ok === false ? "red" : "green";
       const verb = verbFor(i.name);
       const summary = i.args !== undefined ? summariseCall(i.name, i.args) : "";
       const room = w - mark.length - verb.length - 3;
@@ -903,7 +943,7 @@ function renderItem(i: ViewItem, term: number): L[] {
       const out: L[] = [
         styled(
           DEPTH.did,
-          { text: `${mark} `, color: markColor },
+          { text: `${mark} `, color: markColor, dim: i.running },
           { text: verb, bold: true, color: i.ok === false ? "red" : undefined },
           ...(shown
             ? i.name === "shell"
@@ -947,8 +987,6 @@ function renderItem(i: ViewItem, term: number): L[] {
       return [{
         text: clip(`\u22ef compacted ${i.dropped} events \u2014 ${i.summary}`, measureAt(DEPTH.did, term)),
         depth: DEPTH.did,
-        dim: true,
-        color: "yellow" as const,
       }];
 
     // The user ran this, not the agent, so it gets its own mark rather than
@@ -958,14 +996,24 @@ function renderItem(i: ViewItem, term: number): L[] {
       const out: L[] = [
         styled(
           DEPTH.did,
-          { text: "\u2941 ", color: i.ok ? "magenta" : "red" },
+          { text: "\u203a ", color: i.ok ? undefined : "red" },
           { text: `/${i.command}`, bold: true, color: i.ok ? undefined : "red" },
           i.args ? { text: ` ${clip(i.args, w - i.command.length - 4)}`, dim: true } : null,
         ),
       ];
-      for (const line of i.output.split("\n")) {
-        out.push({ text: clip(line, measureAt(DEPTH.detail, term)), depth: DEPTH.detail, dim: true });
-      }
+      // Depth two reads as "what came back" wherever it appears, so a command's
+      // output opens with the same mark a tool's does. Two treatments at one
+      // nesting level is two visual languages for one idea.
+      const dw = measureAt(DEPTH.detail, term);
+      i.output.split("\n").forEach((line, n) => {
+        out.push(
+          styled(
+            DEPTH.detail,
+            { text: n === 0 ? "\u2514 " : "  ", dim: true },
+            { text: clip(line, dw - 2), dim: true },
+          ),
+        );
+      });
       return out;
     }
   }
