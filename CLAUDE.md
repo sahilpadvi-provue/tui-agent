@@ -6,7 +6,7 @@ Architecture rationale lives in the `Agentic Coding Platform: Foundation Researc
 
 ## Stack
 
-TypeScript strict on Bun. Our own cell renderer for the terminal UI, on React 19 via react-reconciler; Ink 7 stays as a dev dependency, driven as a control arm by `scripts/render-check.tsx`. Ollama for models (stands in for the gateway). SQLite via `bun:sqlite` planned for the session index; the log itself is plain JSONL. No test runner, no linter — verification is `bun x tsc --noEmit` plus the gate scripts.
+TypeScript strict on Bun. Our own cell renderer for the terminal UI, on React 19 via react-reconciler; Ink 7 stays as a dev dependency, driven as a control arm by `scripts/render-check.tsx`. Ollama for models (stands in for the gateway). SQLite via `bun:sqlite` planned for the session index; the log itself is plain JSONL. No linter. Verification is `bun x tsc --noEmit`, the gate scripts, and `bun test` for the pure modules (`editor.ts`, `layout.ts` today). The gates prove behaviour end to end and are the primary check; unit tests complement them at the units under the UI, they do not replace them.
 
 ## Invariants
 

@@ -7,6 +7,7 @@
     "agent": "bun run src/cli/headless.ts",
     "replay": "bun run scripts/replay.ts",
     "typecheck": "tsc --noEmit",
+    "test": "bun test src/",
     "tui": "bun run src/cli/tui.tsx",
     "render:demo": "bun run scripts/render-demo.tsx",
     "render:check": "bun run scripts/render-check.tsx",
