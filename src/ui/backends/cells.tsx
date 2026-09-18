@@ -21,6 +21,7 @@ import type {
 import { createRoot, reconciler, toLines, type Root } from "../render/host.ts";
 import { paint, cellAt, type Screen } from "../render/screen.ts";
 import { renderFrame, HIDE_CURSOR, SHOW_CURSOR } from "../render/diff.ts";
+import { StringDecoder } from "node:string_decoder";
 import { Parser, ENABLE_PASTE, DISABLE_PASTE } from "../render/input.ts";
 import type { Paint } from "../../theme/index.ts";
 
@@ -204,8 +205,25 @@ function mount(node: ReactNode, options: MountOptions = {}): Instance {
   };
 
   const parser = new Parser();
+  /**
+   * Decode across reads, not within one.
+   *
+   * `String(buffer)` decodes each chunk alone, so a multi-byte codepoint that
+   * lands on a read boundary becomes two replacement characters and the input
+   * is corrupted -- `café` arriving as `caf\ufffd\ufffd`. Any non-ASCII
+   * character can do it, and a slow link or a paste large enough to fragment
+   * is all it takes. `StringDecoder` holds an incomplete sequence and emits it
+   * once the next chunk completes it.
+   *
+   * It lives as long as the mount and is not flushed on the way out. What it
+   * could still be holding is half a character nobody finished typing, and
+   * there is no longer a screen to show it on.
+   */
+  const decoder = new StringDecoder("utf8");
   const onData = (chunk: Buffer | string) => {
-    const { events, pastes } = parser.push(String(chunk));
+    const text = typeof chunk === "string" ? chunk : decoder.write(chunk);
+    if (text === "") return;
+    const { events, pastes } = parser.push(text);
     for (const e of events) for (const fn of [...session.keys]) fn(e);
     for (const text of pastes) for (const fn of [...session.pastes]) fn(text);
   };

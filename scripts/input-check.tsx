@@ -17,7 +17,7 @@
 
 import React from "react";
 import { Parser } from "../src/ui/render/input.ts";
-import { Label, mount } from "../src/ui/primitives.tsx";
+import { Label, mount, useKeys } from "../src/ui/primitives.tsx";
 import { screen } from "./vt.ts";
 
 let failures = 0;
@@ -137,5 +137,47 @@ const after = view.lines().filter(Boolean).join("\n");
 
 check("the frame is on screen before unmounting", before.includes("still here"));
 check("and survives it", after.includes("still here"), JSON.stringify(after));
+
+
+
+// --- a codepoint split across two reads -------------------------------------
+//
+// `String(buffer)` decodes each chunk alone, so a multi-byte character landing
+// on a read boundary became two replacement characters. The split has to be
+// deliberate: writing the whole word in one chunk passes on the broken build
+// and proves nothing.
+
+async function typed(word: string, cut: number): Promise<string> {
+  const v = screen(40, 8);
+  const got: string[] = [];
+  function Probe() {
+    useKeys((ch) => {
+      if (ch) got.push(ch);
+    });
+    return <Label>probe</Label>;
+  }
+  const a = mount(<Probe />, { stdout: v.stdout, stdin: v.stdin });
+  await new Promise((r) => setTimeout(r, 60));
+  const bytes = Buffer.from(word, "utf8");
+  (v.stdin as unknown as { write(b: Buffer): void }).write(bytes.subarray(0, cut));
+  await new Promise((r) => setTimeout(r, 30));
+  (v.stdin as unknown as { write(b: Buffer): void }).write(bytes.subarray(cut));
+  await new Promise((r) => setTimeout(r, 60));
+  a.unmount();
+  return got.join("");
+}
+
+const latin = await typed("café", Buffer.from("café", "utf8").length - 1);
+check("a two-byte character split across reads survives", latin === "café", JSON.stringify(latin));
+
+const cjk = await typed("日本語", 4);
+check("and a three-byte one", cjk === "日本語", JSON.stringify(cjk));
+
+const emoji = await typed("ok 🚀", 5);
+check("and a surrogate pair", emoji === "ok 🚀", JSON.stringify(emoji));
+
+check("no replacement character reached the handler",
+  ![latin, cjk, emoji].some((s) => s.includes("�")),
+  "a replacement character is corrupted input, not a rendering problem");
 
 process.exit(failures === 0 ? 0 : 1);
