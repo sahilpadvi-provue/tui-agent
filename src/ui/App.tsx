@@ -7,7 +7,7 @@ import { bannerLines } from "./banner.ts";
 import {
   BLANK, DEPTH, GUTTER, STEP,
   clip, highlightCommand, measureAt, outputLines, shimmer, shortenPath, styled,
-  summariseCall, verbFor, wrap,
+  summariseCall, verbFor, workingVerb, wrap,
   type Line as L,
 } from "./layout.ts";
 import {
@@ -147,7 +147,7 @@ export function App({
   // one clock now, so their ticks land in the same frame, and it stops
   // entirely when nothing is animating.
   //
-  // The wave through "working" runs faster than the clock: a second is long
+  // The wave through the verb runs faster than the clock: a second is long
   // enough to look stopped. It is decoration, so it goes through `motion` and
   // disappears under NO_MOTION.
   /**
@@ -170,6 +170,7 @@ export function App({
    * It stops of its own accord: when the count reaches zero nothing is
    * subscribed and the screen is genuinely still.
    */
+  const [verb, setVerb] = useState("Working");
   const [arriving, setArriving] = useState(0);
   const arrival = usePhase(arriving > 0 ? motion(TICK_MS) : null);
   const requestId = state.pending?.requestId;
@@ -190,7 +191,13 @@ export function App({
       setElapsed(0);
       return;
     }
-    if (startedAt.current === null) startedAt.current = Date.now();
+    if (startedAt.current === null) {
+      startedAt.current = Date.now();
+      // Once, when the turn begins. This effect also runs on every tick of the
+      // clock, and a word that changed every second would be a second thing
+      // moving -- the shimmer is already moving through it.
+      setVerb(workingVerb());
+    }
     // Read from the real clock rather than counting ticks, so a coalesced or
     // late tick still shows the right number.
     setElapsed(Math.floor((Date.now() - startedAt.current) / 1000));
@@ -567,7 +574,7 @@ export function App({
           <Stack direction="row" padX={GUTTER}>
             <Label dim>{"\u00b7 "}</Label>
             <Label bold>
-              {shimmer("working", phase, theme.shimmer).map((sp, i) => (
+              {shimmer(verb, phase, theme.shimmer).map((sp, i) => (
                 <Label key={i} color={sp.color}>{sp.text}</Label>
               ))}
             </Label>

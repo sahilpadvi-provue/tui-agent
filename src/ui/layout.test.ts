@@ -9,7 +9,7 @@
 import { test, expect, describe, afterEach } from "bun:test";
 import {
   measureAt, wrap, clip, outputLines, summariseCall, verbFor,
-  shortenPath, shimmer, highlightCommand,
+  shortenPath, shimmer, highlightCommand, workingVerb,
   charWidth, displayWidth, sliceToWidth,
 } from "./layout.ts";
 import { dark, rgb } from "../theme/index.ts";
@@ -258,5 +258,25 @@ describe("wrap, on widths that could not terminate", () => {
   });
   test("clip at a width of one is still a single character", () => {
     expect(displayWidth(clip("hello", 1))).toBeLessThanOrEqual(1);
+  });
+});
+
+describe("workingVerb", () => {
+  test("varies from one turn to the next", () => {
+    const seen = new Set([workingVerb(), workingVerb(), workingVerb()]);
+    expect(seen.size).toBe(3);
+  });
+  test("never collides with a tool's verb", () => {
+    // The indicator sits two rows under a running call. If it could say the
+    // same word, it would read as a second call rather than as the turn.
+    const tools = ["shell", "read_file", "write_file", "replace_lines", "edit_file", "search", "list_files"];
+    const toolVerbs = new Set(tools.map(verbFor));
+    const verbs = new Set(Array.from({ length: 40 }, () => workingVerb()));
+    for (const v of verbs) expect(toolVerbs.has(v)).toBe(false);
+  });
+  test("cycles rather than running out", () => {
+    const many = Array.from({ length: 40 }, () => workingVerb());
+    expect(new Set(many).size).toBeGreaterThan(8);
+    expect(new Set(many).size).toBeLessThan(40);
   });
 });

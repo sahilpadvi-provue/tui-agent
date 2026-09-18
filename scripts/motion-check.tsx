@@ -21,6 +21,14 @@ import { screen } from "./vt.ts";
 import { dark } from "../src/theme/index.ts";
 
 const suppressed = (process.env["NO_MOTION"] ?? "") !== "";
+
+/**
+ * The part of the working row that does not change.
+ *
+ * Its verb is chosen per turn, so matching the word would make this gate
+ * depend on which one came up -- green on one run and confused on the next.
+ */
+const MARK = "esc to interrupt";
 let failures = 0;
 const check = (name: string, ok: boolean, detail = "") => {
   console.log(`${ok ? "ok  " : "FAIL"} ${name}${ok || !detail ? "" : ` — ${detail}`}`);
@@ -57,14 +65,14 @@ async function observe(
   for (let i = 0; i < samples; i++) {
     const rows = view.lines();
     seen.composer.add((rows.filter((l) => l.includes("› ")).pop() ?? "").trimEnd());
-    seen.working.add((rows.find((l) => l.includes("working")) ?? "").trimEnd());
+    seen.working.add((rows.find((l) => l.includes(MARK)) ?? "").trimEnd());
     const raw = view.raw();
     const chunk = raw.slice(read);
     read = raw.length;
     // Per-character styling means a styled word is never contiguous in the
     // buffer: the shimmer writes an SGR run between every letter, so matching
     // on the raw bytes finds nothing. src/ui/README.md warns about exactly this.
-    if (chunk.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "").includes("working")) {
+    if (chunk.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "").includes(MARK)) {
       seen.repaints.push([...chunk.matchAll(/\x1b\[([0-9;]+)m/g)].map((m) => m[1]).join(","));
     }
     seen.timer.push(clockRunning());
@@ -106,7 +114,7 @@ if (suppressed) {
   check("NO_MOTION: an idle screen has no timer at all", !idle.timer.some(Boolean),
     "suppression is a decision not to subscribe, so there is nothing left to stop");
   check("NO_MOTION: the working row is still drawn",
-    [...busy.working][0]?.includes("working") === true,
+    [...busy.working][0]?.includes(MARK) === true,
     "the elapsed clock is not decoration and must keep counting");
   process.exit(failures === 0 ? 0 : 1);
 }

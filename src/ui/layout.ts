@@ -301,6 +301,32 @@ export function verbFor(tool: string): string {
   return VERBS[tool] ?? tool;
 }
 
+/**
+ * What the working indicator calls itself, one per turn.
+ *
+ * The shimmer already says the agent is alive; this says something quieter,
+ * that there is someone home. It is the one piece of character on the screen
+ * and it costs nothing to run -- no timer, no frames, no bytes a second. The
+ * word is chosen when a turn starts and does not move.
+ *
+ * Short and plain on purpose. A long whimsical list suits a consumer tool; the
+ * reader here is waiting on a build and `Transmogrifying` would read as noise
+ * where `Weighing` does not. None of these collides with a tool verb, so the
+ * indicator can never be mistaken for the call running two rows above it.
+ */
+const WORKING: readonly string[] = [
+  "Working", "Thinking", "Reasoning", "Considering", "Weighing", "Mulling",
+  "Puzzling", "Untangling", "Sifting", "Tracing", "Narrowing", "Deliberating",
+];
+
+// Advances rather than randomises: a session still varies, and a script that
+// renders the same states twice still prints the same thing.
+let turns = 0;
+
+export function workingVerb(): string {
+  return WORKING[turns++ % WORKING.length]!;
+}
+
 /** Shortens a path from the left, keeping the end that identifies it. */
 export function shortenPath(p: string, width: number): string {
   if (p.length <= width) return p;
