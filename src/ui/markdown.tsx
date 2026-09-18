@@ -38,8 +38,9 @@ export function segments(text: string): Seg[] {
       // click and no way to recover the address. Both, and the address is
       // what you actually need.
       const cut = t.indexOf("](");
-      out.push({ text: t.slice(1, cut), code: true });
-      out.push({ text: ` (${t.slice(cut + 2, -1)})`, href: t.slice(cut + 2, -1), code: true });
+      const href = t.slice(cut + 2, -1);
+      out.push({ text: t.slice(1, cut), code: true, href });
+      out.push({ text: ` (${href})`, code: true, href });
     }
     else out.push({ text: t.slice(1, -1), italic: true });
     last = at + t.length;
@@ -220,7 +221,8 @@ export function tableLines(t: Table, width: number, depth: number, theme: Theme)
 type Styled = Omit<Span, "text">;
 
 const sameStyle = (a: Styled, b: Styled): boolean =>
-  a.bold === b.bold && a.italic === b.italic && a.color === b.color;
+  a.bold === b.bold && a.italic === b.italic && a.color === b.color
+  && a.underline === b.underline;
 
 /**
  * Wrap first, then parse, and `**a long phrase**` split across the break
@@ -251,6 +253,10 @@ export function wrapSpans(text: string, width: number, theme: Theme): Span[][] {
       const style: Styled = {
         bold: seg.bold || block.bold,
         italic: seg.italic,
+        // A link that looks like prose is not discoverable, which is the
+        // whole job of a link. Underline is the one attribute reliable
+        // enough to carry it.
+        ...(seg.href ? { underline: true } : {}),
         ...(seg.code ? { color: theme.name } : {}),
       };
       for (const word of seg.text.split(/(\s+)/)) if (word) tokens.push({ text: word, style });

@@ -816,7 +816,15 @@ function Row({ line, theme }: { line: L; theme: Theme }) {
       <Label bg={line.band}>
         {pad}
         {(line.spans ?? [{ text: line.text }]).map((sp, i) => (
-          <Label key={i} bg={line.band} color={sp.color} bold={sp.bold} dim={sp.dim}>
+          <Label
+            key={i}
+            bg={line.band}
+            color={sp.color}
+            bold={sp.bold}
+            dim={sp.dim}
+            italic={sp.italic}
+            underline={sp.underline}
+          >
             {sp.text}
           </Label>
         ))}
@@ -828,8 +836,19 @@ function Row({ line, theme }: { line: L; theme: Theme }) {
     return (
       <Label>
         {pad}
+        {/* Every attribute a Span can carry. Whichever is left out is dropped
+            in silence -- the line renders correctly except for the one thing
+            nobody thought to forward, which is how italic went missing when
+            assistant prose moved from `md` to resolved spans. */}
         {line.spans.map((s, i) => (
-          <Label key={i} color={s.color} dim={s.dim} bold={s.bold}>
+          <Label
+            key={i}
+            color={s.color}
+            dim={s.dim}
+            bold={s.bold}
+            italic={s.italic}
+            underline={s.underline}
+          >
             {s.text}
           </Label>
         ))}

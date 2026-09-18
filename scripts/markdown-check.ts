@@ -101,4 +101,51 @@ if (parsed[0]?.kind === "table") {
     "every colour on this screen already means something, and heading is not one");
 }
 
+
+
+// ---------------------------------------------------------------------------
+// Every attribute a span carries has to reach the terminal
+// ---------------------------------------------------------------------------
+//
+// Not a hypothetical. Assistant prose moved from `md` to resolved spans and
+// `Row` forwarded colour, dim and bold but not italic or underline, so the
+// line rendered correctly except for the one attribute nobody thought about.
+// Asserting the spans is not enough; this asserts the bytes.
+
+const { App } = await import("../src/ui/App.tsx");
+const { mount } = await import("../src/ui/primitives.tsx");
+const { EventBus } = await import("../src/core/bus.ts");
+const { screen: term } = await import("./vt.ts");
+const React = (await import("react")).default;
+
+const view = term(76, 20);
+const bus = new EventBus();
+const app = mount(
+  React.createElement(App, {
+    bus, cwd: "/p", model: "m", version: "0", backend: "b", sandbox: "off",
+    branch: "main", busy: false, theme: dark,
+    onSubmit: () => {}, onCommand: () => {}, onCancel: () => {}, onPermission: () => {},
+  }),
+  { stdout: view.stdout, stdin: view.stdin },
+);
+const emit = (x: Record<string, unknown>) => bus.emit({ sessionId: "s", ...x } as never);
+emit({ type: "message.started", id: "u", role: "user" });
+emit({ type: "message.completed", id: "u", text: "docs" });
+emit({ type: "message.started", id: "a", role: "assistant" });
+emit({ type: "message.completed", id: "a",
+  text: "See the [Docs](https://example.com/x) or the *notes* and **this**." });
+await new Promise((r) => setTimeout(r, 200));
+
+const row = view.raw().split("\r").find((r) =>
+  r.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "").includes("Docs")) ?? "";
+app.unmount();
+const codes = [...row.matchAll(/\x1b\[([0-9;]+)m/g)].map((m) => m[1]!);
+const has = (n: string) => codes.some((c) => c.split(";").includes(n));
+
+check("the assistant row was found at all", row !== "", "otherwise the rest is vacuous");
+check("a link is underlined on the wire", has("4"), codes.join(" "));
+check("italic reaches the wire", has("3"), codes.join(" "));
+check("bold reaches the wire", has("1"), codes.join(" "));
+check("and the link is tinted as a name", has("36"), codes.join(" "));
+
 process.exit(failures === 0 ? 0 : 1);
