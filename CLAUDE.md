@@ -126,8 +126,8 @@ bun run evals --only ambiguous-edit --repeats 5
 
 ## Gate scripts
 
-Run the one covering what you changed; run all thirty before calling phase work
-done. The list is the whole suite: two independently-built shorter lists both
+Run the one covering what you changed; run all thirty-one before calling phase
+work done. The list is the whole suite: two independently-built shorter lists both
 missed `scripts/resume-check.ts`, because `resume:check` points at a different
 script and nothing else names it.
 
@@ -142,6 +142,7 @@ error.
 
 ```bash
 bun run scripts/replay.ts fixtures/handwritten.jsonl   # log replays, compaction reversible
+bun run scripts/evals-check.ts                         # a run that did not finish cannot pass an eval
 bun run scripts/boundary.ts                            # workspace escape blocked
 bun run scripts/sandbox-check.ts                       # OS sandbox contains writes and egress
 bun run scripts/checkpoint-check.ts                    # checkpoint restores, user git state untouched

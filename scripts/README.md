@@ -23,6 +23,7 @@ Gate scripts. Each one is a claim about the system that can fail loudly.
 | `backend-check.tsx` | Every renderer backend draws the same screen, for the synthetic tree and for the real `App` |
 | `keys-check.tsx` | Every key binding edits what it claims to, read back through the text the composer submits |
 | `latency-check.tsx` | The frame cap coalesces a stream without delaying a keystroke |
+| `evals-check.ts` | A run that did not finish cannot pass an eval, whatever the repo looks like |
 | `frame-dump.tsx` | Not a gate — prints the rendered frame line by line, for layout work |
 
 ## Rules
