@@ -67,9 +67,9 @@ function Box({
   );
 }
 
-function Text({ children, color, bg, dim, bold, italic }: TextProps) {
+function Text({ children, color, bg, dim, bold, italic, underline }: TextProps) {
   return (
-    <InkText color={inkColor(color)} backgroundColor={inkColor(bg)} dimColor={dim} bold={bold} italic={italic}>
+    <InkText color={inkColor(color)} backgroundColor={inkColor(bg)} dimColor={dim} bold={bold} italic={italic} underline={underline}>
       {children}
     </InkText>
   );

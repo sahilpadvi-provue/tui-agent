@@ -30,6 +30,7 @@ type Style = {
   dim?: boolean;
   bold?: boolean;
   italic?: boolean;
+  underline?: boolean;
 };
 
 export type TextNode = { kind: "text"; style: Style; children: Node[] };
@@ -98,6 +99,7 @@ function strip(s: Style): Style {
   if (s.dim !== undefined) out.dim = s.dim;
   if (s.bold !== undefined) out.bold = s.bold;
   if (s.italic !== undefined) out.italic = s.italic;
+  if (s.underline !== undefined) out.underline = s.underline;
   return out;
 }
 
@@ -173,6 +175,7 @@ function styleFrom(props: Record<string, unknown>): Style {
   if (typeof props["dim"] === "boolean") s.dim = props["dim"];
   if (typeof props["bold"] === "boolean") s.bold = props["bold"];
   if (typeof props["italic"] === "boolean") s.italic = props["italic"];
+  if (typeof props["underline"] === "boolean") s.underline = props["underline"];
   return s;
 }
 

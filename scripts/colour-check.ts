@@ -34,8 +34,11 @@ const bandRow = (t: Theme) =>
 /** Colour and weight together, which is what NO_COLOR has to separate. */
 const weightedRow = (t: Theme) =>
   bytes({
-    text: "chrome", depth: 0,
-    spans: [{ text: "chrome", color: t.muted, dim: true }],
+    text: "chromelink", depth: 0,
+    spans: [
+      { text: "chrome", color: t.muted, dim: true },
+      { text: "link", color: t.name, underline: true },
+    ],
   });
 
 const shimmerRow = (t: Theme) =>
@@ -127,6 +130,10 @@ if (plain && coloured) {
   // The secondary tier of this UI rests entirely on dim. Suppressing weight as
   // well would collapse three tiers into one and take the hierarchy with it.
   check("but weight survives it", plain.some((c) => /\x1b\[(?:\d+;)*2(?:;\d+)*m/.test(c)), plain.join(" "));
+  // A link is exactly where findability matters most on a monochrome terminal,
+  // so underline has to survive for the same reason dim does.
+  check("and so does underline, so a link is still a link without colour",
+    plain.some((c) => /\x1b\[(?:\d+;)*4(?:;\d+)*m/.test(c)), plain.join(" "));
   check("and without it colour comes back", coloured.some((c) => /[34]8;5;/.test(c)),
     coloured.join(" "));
 }

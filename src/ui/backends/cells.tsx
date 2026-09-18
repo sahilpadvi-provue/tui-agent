@@ -43,6 +43,7 @@ declare module "react" {
         dim?: boolean;
         bold?: boolean;
         italic?: boolean;
+        underline?: boolean;
       };
     }
   }
@@ -65,9 +66,9 @@ function Box({
   );
 }
 
-function Text({ children, color, bg, dim, bold, italic }: TextProps) {
+function Text({ children, color, bg, dim, bold, italic, underline }: TextProps) {
   return (
-    <tui-text color={color} bg={bg} dim={dim} bold={bold} italic={italic}>
+    <tui-text color={color} bg={bg} dim={dim} bold={bold} italic={italic} underline={underline}>
       {children}
     </tui-text>
   );

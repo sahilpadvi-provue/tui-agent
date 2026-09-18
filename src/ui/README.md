@@ -87,7 +87,11 @@ Four numbers, in `layout.ts`. Anything new should replace one of them, not join 
 
 ## Weight
 
-A terminal has one typeface, so hierarchy is colour, dim and bold — nothing else. A row carrying a single style flattens the distinctions worth making, so a `Line` is a sequence of `Span`s:
+A terminal has one typeface, so hierarchy is colour, dim, bold and underline — nothing else.
+
+Underline is the fourth channel and was added deliberately, once, for links. A rendered link shows its address, so without a weight it reads as prose and the one thing a link needs is to be findable. It is also the reliable half of the pair: italic is inconsistently supported, and because `*text*` has its asterisks stripped before SGR 3 is emitted, on a terminal that ignores italic the emphasis is *deleted* rather than degraded.
+
+Strikethrough, inverse, blink and the coloured or curly underlines are deliberately absent. Not because they are hard: each one is another attribute the weight vocabulary has to answer for, and four channels already asks a lot of a reader. Add a fifth by arguing for it, not because the file is open. A row carrying a single style flattens the distinctions worth making, so a `Line` is a sequence of `Span`s:
 
 | | |
 | --- | --- |

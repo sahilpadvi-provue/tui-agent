@@ -20,6 +20,7 @@ import type { Backend } from "../src/ui/backend.ts";
 import { cellsBackend } from "../src/ui/backends/cells.tsx";
 import { inkBackend } from "../src/ui/backends/ink.tsx";
 import { dark, rgb, slot } from "../src/theme/index.ts";
+import { spawnSync } from "node:child_process";
 
 let failures = 0;
 const check = (name: string, ok: boolean, detail = "") => {
@@ -44,6 +45,20 @@ const fakeTty = () => {
 
 const plain = (s: string) => s.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "");
 
+// Before anything prints: the parent reads this child's whole stdout.
+if (process.argv.includes("--attrs")) {
+  const which = process.argv[process.argv.indexOf("--attrs") + 1];
+  const backend = which === "ink" ? inkBackend : cellsBackend;
+  const { frames, stdout, stdin } = fakeTty();
+  const app = mount(<Stack><Label underline>link</Label></Stack>, { stdout, stdin, backend });
+  await wait(160);
+  app.unmount();
+  await app.waitUntilExit();
+  process.stdout.write(JSON.stringify(frames.out.match(/\x1b\[[0-9;]+m/g) ?? []));
+  process.exit(0);
+}
+
+
 // ---------------------------------------------------------------- same answer
 
 /**
@@ -65,6 +80,7 @@ const shared = (
         to keep it, which put a raw LF inside a row the diff counted as one
         and desynchronised every row after it. */}
     <Label>{"broken\nacross rows"}</Label>
+    <Label underline>underlined</Label>
     <Stack direction="row">
       <Label>left</Label>
       <Label>right</Label>
@@ -99,7 +115,7 @@ for (const { name, rows } of rendered) {
   const text = rows.join("\n");
   check(`${name} drew every element`, [
     "settled one", "settled two", "plain row", "tinted and bold",
-    "outer inner tail", "leftright", "boxed", "padded",
+    "outer inner tail", "leftright", "boxed", "padded", "underlined",
   ].every((s) => text.includes(s)), JSON.stringify(rows));
   check(`${name} breaks a row on a newline rather than drawing it`,
     rows.includes("broken") && rows.includes("across rows")
@@ -172,6 +188,34 @@ for (const [i, rows] of appOthers.entries()) {
   check(`${name} drew the App's banner, composer and footer`,
     ["tui-agent", "describe a change", "qwen3:8b"].every((t) => rows.join("\n").includes(t)),
     JSON.stringify(rows));
+}
+
+// ---------------------------------------------------------------- attributes
+//
+// `renderToText` strips escapes, so the comparison above proves both backends
+// draw the same characters and says nothing about weight. An attribute
+// forwarded in one backend and forgotten in the other looks identical there.
+// Ink fixes its colour level when chalk is imported, so its arm runs in a
+// child with FORCE_COLOR set.
+
+const selfPath = new URL(import.meta.url).pathname;
+const attrCodes = (which: string) => {
+  const r = spawnSync(process.execPath, ["run", selfPath, "--attrs", which], {
+    encoding: "utf8", env: { ...process.env, FORCE_COLOR: "3" },
+  });
+  try {
+    return JSON.parse((r.stdout ?? "").trim()) as string[];
+  } catch {
+    return null;
+  }
+};
+const underlines = (cs: string[] | null) =>
+  cs !== null && cs.some((c) => /\[(?:\d+;)*4(?:;\d+)*m/.test(c));
+
+for (const which of ["cells", "ink"]) {
+  const cs = attrCodes(which);
+  check(`${which} emits SGR 4 for an underlined span`, underlines(cs),
+    JSON.stringify(cs));
 }
 
 // ------------------------------------------------------------------ live mount

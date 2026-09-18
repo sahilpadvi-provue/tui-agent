@@ -58,6 +58,7 @@ export type Span = {
   readonly dim?: boolean;
   readonly bold?: boolean;
   readonly italic?: boolean;
+  readonly underline?: boolean;
 };
 
 export type Line = {

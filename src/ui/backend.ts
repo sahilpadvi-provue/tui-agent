@@ -66,6 +66,7 @@ export type TextProps = {
   dim?: boolean;
   bold?: boolean;
   italic?: boolean;
+  underline?: boolean;
 };
 
 export type SettledProps<T> = {

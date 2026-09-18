@@ -125,11 +125,18 @@ function sgrFor(style: {
   dim?: boolean;
   bold?: boolean;
   italic?: boolean;
+  underline?: boolean;
 }): string {
   const codes: (number | string)[] = [];
   if (style.bold) codes.push(1);
   if (style.dim) codes.push(2);
   if (style.italic) codes.push(3);
+  // The one reliable attribute this UI was not spending. Bold and underline are
+  // the safe pair; italic is inconsistently supported, and because `*text*` has
+  // its asterisks stripped before SGR 3 is emitted, on a terminal that ignores
+  // it the emphasis is deleted rather than degraded. A link is the case that
+  // needs it: the address is rendered, so without a weight it reads as prose.
+  if (style.underline) codes.push(4);
   if (!NO_COLOUR) {
     if (style.color) {
       const c = code(style.color, 38);

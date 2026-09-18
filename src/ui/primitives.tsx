@@ -58,6 +58,7 @@ export type LabelProps = {
   dim?: boolean;
   bold?: boolean;
   italic?: boolean;
+  underline?: boolean;
 };
 
 export function Label({ children, ...rest }: LabelProps) {
