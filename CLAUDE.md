@@ -158,7 +158,7 @@ bun run host:check                                     # the host draws what the
 bun run render:check                                   # no ghosting on resize, with Ink as a control
 bun run quiet:check                                    # a resize repaints with nothing else running
 bun run input:check                                    # keys, runs of typing, bracketed paste
-bun run colour:check                                   # no 24-bit colour on a terminal without it
+bun run colour:check                                   # colour is right at both depths, 24-bit only when offered
 bun run md:check                                       # emphasis survives the renderer
 bun run scripts/keys-check.tsx                         # every key binding edits what it claims to
 bun run scripts/latency-check.tsx                      # the frame cap does not delay a keystroke
@@ -172,7 +172,7 @@ bun run motion:check                                   # what moves, when, and w
 bun run width:check                                    # width is columns, not code units
 bun run permission:check                               # a stray keystroke cannot approve a tool
 bun run clock:check                                    # one shared clock, and none when nothing moves
-bun run theme:check                                    # the screen asks the theme, and /theme switches it
+bun run theme:check                                    # the screen asks the theme at both colour depths
 ```
 
 ## Attribution

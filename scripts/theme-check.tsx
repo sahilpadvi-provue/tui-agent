@@ -14,6 +14,7 @@ import { mount } from "../src/ui/primitives.tsx";
 import { screen } from "./vt.ts";
 import { runCommand, type CommandContext } from "../src/commands/registry.ts";
 import { dark, light, themeNamed, type Theme } from "../src/theme/index.ts";
+import { DARK_BAND, LIGHT_BAND } from "./sgr.ts";
 
 let failures = 0;
 const check = (name: string, ok: boolean, detail = "") => {
@@ -56,11 +57,11 @@ const darkCodes = await codesFor(dark);
 const lightCodes = await codesFor(light);
 
 check("a request row is banded with the dark theme's grey",
-  darkCodes.some((c) => c.includes("48;5;235")), darkCodes.slice(0, 8).join(" "));
+  darkCodes.some(DARK_BAND), darkCodes.slice(0, 8).join(" "));
 check("and with the light theme's, from the same component",
-  lightCodes.some((c) => c.includes("48;5;254")), lightCodes.slice(0, 8).join(" "));
+  lightCodes.some(LIGHT_BAND), lightCodes.slice(0, 8).join(" "));
 check("neither leaks the other's band",
-  !darkCodes.some((c) => c.includes("48;5;254")) && !lightCodes.some((c) => c.includes("48;5;235")));
+  !darkCodes.some(LIGHT_BAND) && !lightCodes.some(DARK_BAND));
 
 // ---- selection -------------------------------------------------------------
 

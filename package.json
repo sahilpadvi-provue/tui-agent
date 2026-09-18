@@ -12,7 +12,7 @@
     "render:demo": "bun run scripts/render-demo.tsx",
     "render:check": "bun run scripts/render-check.tsx",
     "host:check": "bun run scripts/host-smoke.tsx",
-    "colour:check": "bun run scripts/colour-check.ts",
+    "colour:check": "bun run scripts/colour-check.ts && COLORTERM=truecolor bun run scripts/colour-check.ts",
     "quiet:check": "bun run scripts/quiet-resize-check.tsx",
     "input:check": "bun run scripts/input-check.tsx",
     "md:check": "bun run scripts/markdown-check.ts",
@@ -25,7 +25,7 @@
     "width:check": "bun run scripts/width-check.ts",
     "permission:check": "bun run scripts/permission-check.tsx",
     "clock:check": "bun run scripts/clock-check.tsx",
-    "theme:check": "bun run scripts/theme-check.tsx",
+    "theme:check": "bun run scripts/theme-check.tsx && COLORTERM=truecolor bun run scripts/theme-check.tsx",
     "sessions": "bun run src/cli/sessions.ts",
     "evals": "bun run evals/run.ts",
     "build": "bun build --compile src/cli/tui.tsx --outfile dist/tui --external react-devtools-core && bun build --compile src/cli/headless.ts --outfile dist/agent"

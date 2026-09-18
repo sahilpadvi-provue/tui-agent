@@ -16,6 +16,7 @@ import { spawnSync } from "node:child_process";
 import { paint } from "../src/ui/render/screen.ts";
 import { renderFrame } from "../src/ui/render/diff.ts";
 import { THEMES, dark, light, ROLES, type Theme } from "../src/theme/index.ts";
+import { DARK_BAND, LIGHT_BAND, SHIMMER_HEAD, anyColour } from "./sgr.ts";
 
 let failures = 0;
 const check = (name: string, ok: boolean, detail = "") => {
@@ -91,14 +92,14 @@ if (truecolor) {
   }
   // The exact indices chalk picks, so the screen matches an Ink build. Both
   // arms are asserted, or the light theme could drift without anything saying.
-  check("the dark band is the grey Ink would pick", codes(bandRow(dark)).some((c) => c.includes("48;5;235")),
+  check("the dark band is the grey Ink would pick", codes(bandRow(dark)).some(DARK_BAND),
     codes(bandRow(dark)).join(" "));
-  check("the light band is the grey Ink would pick", codes(bandRow(light)).some((c) => c.includes("48;5;254")),
+  check("the light band is the grey Ink would pick", codes(bandRow(light)).some(LIGHT_BAND),
     codes(bandRow(light)).join(" "));
-  check("the dark shimmer head is Ink's white", codes(shimmerRow(dark)).some((c) => c.includes("38;5;231")),
+  check("the dark shimmer head is Ink's white", codes(shimmerRow(dark)).some(SHIMMER_HEAD),
     codes(shimmerRow(dark)).join(" "));
   check("and the light shimmer head is dark, not white",
-    !codes(shimmerRow(light)).some((c) => c.includes("38;5;231")),
+    !codes(shimmerRow(light)).some(SHIMMER_HEAD),
     codes(shimmerRow(light)).join(" "));
 }
 
@@ -134,7 +135,7 @@ if (plain && coloured) {
   // so underline has to survive for the same reason dim does.
   check("and so does underline, so a link is still a link without colour",
     plain.some((c) => /\x1b\[(?:\d+;)*4(?:;\d+)*m/.test(c)), plain.join(" "));
-  check("and without it colour comes back", coloured.some((c) => /[34]8;5;/.test(c)),
+  check("and without it colour comes back", coloured.some(anyColour),
     coloured.join(" "));
 }
 
