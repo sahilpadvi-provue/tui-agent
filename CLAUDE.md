@@ -141,6 +141,7 @@ bun run input:check                                    # keys, runs of typing, b
 bun run colour:check                                   # no 24-bit colour on a terminal without it
 bun run md:check                                       # emphasis survives the renderer
 bun run scripts/keys-check.tsx                         # every key binding edits what it claims to
+bun run scripts/latency-check.tsx                      # the frame cap does not delay a keystroke
 bun run backend:check                                  # every renderer backend draws the same screen
 bun run resume:check                                   # resume works from the terminal client
 bun run changed:check                                  # what a call changed reaches the view model

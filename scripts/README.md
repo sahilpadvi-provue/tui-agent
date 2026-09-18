@@ -22,6 +22,7 @@ Gate scripts. Each one is a claim about the system that can fail loudly.
 | `queue-check.tsx` | Typing is never blocked; Enter queues and the queue flushes on idle |
 | `backend-check.tsx` | Every renderer backend draws the same screen, for the synthetic tree and for the real `App` |
 | `keys-check.tsx` | Every key binding edits what it claims to, read back through the text the composer submits |
+| `latency-check.tsx` | The frame cap coalesces a stream without delaying a keystroke |
 | `frame-dump.tsx` | Not a gate — prints the rendered frame line by line, for layout work |
 
 ## Rules

@@ -164,6 +164,9 @@ function useExit(): () => void {
   return useSession().exit;
 }
 
+/** 60fps. Nothing in a terminal is shown faster, so a frame above this is a write with no reader. */
+export const FRAME_MS = 16;
+
 function mount(node: ReactNode, options: MountOptions = {}): Instance {
   const out = options.stdout ?? process.stdout;
   const input = options.stdin ?? process.stdin;
@@ -175,15 +178,19 @@ function mount(node: ReactNode, options: MountOptions = {}): Instance {
 
   let prev: Screen | null = null;
   let scheduled = false;
+  let deferred: ReturnType<typeof setTimeout> | null = null;
+  let lastPaint = 0;
   let unmounted = false;
   let done = () => {};
   const exited = new Promise<void>((r) => { done = r; });
 
   const draw = () => {
     scheduled = false;
+    if (deferred !== null) { clearTimeout(deferred); deferred = null; }
     // Unmounting empties the tree, and painting that erases the final frame --
     // which for an inline renderer means the session wipes itself on exit.
     if (unmounted) return;
+    lastPaint = performance.now();
     const next = paint(toLines(root), out.columns ?? 80);
     out.write(renderFrame(prev, next, out.rows ?? 24));
     prev = next;
@@ -191,11 +198,22 @@ function mount(node: ReactNode, options: MountOptions = {}): Instance {
   };
 
   // React commits synchronously here, and a single update can commit more than
-  // once; coalescing to a microtask keeps one frame per turn of the loop.
+  // once; coalescing to a microtask keeps one frame per turn of the loop. A
+  // microtask alone is not enough under a stream: a token arriving every yield
+  // gets its own frame, so 2000 deltas painted 41 times where a terminal could
+  // show 5, and the writes for the other 36 went nowhere a human could read.
+  //
+  // Leading edge deliberately. Waiting out the budget first would put FRAME_MS
+  // between a keystroke and the character appearing, which is the one latency
+  // in this renderer anybody feels. The timer exists only while a paint is
+  // owed, so an idle screen still has no clock running -- `clock:check` is the
+  // gate that says so, and a standing frame loop would have made it blind.
   root.onRender = () => {
     if (scheduled) return;
     scheduled = true;
-    queueMicrotask(draw);
+    const since = performance.now() - lastPaint;
+    if (since >= FRAME_MS) queueMicrotask(draw);
+    else deferred = setTimeout(draw, FRAME_MS - since);
   };
 
   const session: Omit<Session, "columns"> = {
@@ -249,6 +267,7 @@ function mount(node: ReactNode, options: MountOptions = {}): Instance {
     unmount() {
       if (unmounted) return;
       unmounted = true;
+      if (deferred !== null) { clearTimeout(deferred); deferred = null; }
       reconciler.updateContainerSync(null, container, null, null);
       reconciler.flushSyncWork();
       if (raw) {
