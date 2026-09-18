@@ -13,8 +13,12 @@ ollama pull qwen3:8b
 
 bun install
 bun run tui                                  # the terminal client
+bun run tui --continue                       # reopen the most recent session
+bun run tui --resume                         # pick one from a list
+bun run tui --resume <id>                    # reopen that one
 bun run agent "fix the failing test" --yes   # headless, no UI
-bun run agent --resume <id> "now add a test" # continue a session
+bun run agent --resume <id> "now add a test" # continue a session, headless
+bun run agent --resume                       # list what there is to resume
 bun run replay .sessions/<id>.jsonl          # reconstruct a session from its log
 
 bun run sessions list                        # sessions in this repo
@@ -122,6 +126,24 @@ A multi-line paste is still a single `[Pasted text #1 +13 lines]` chip rather
 than rows: one deliberate line break is not a block worth collapsing, and a
 pasted stack trace is.
 
+## Sessions
+
+Every session is a log, and resuming one is a read of that log: the transcript
+on screen, the context sent to the model, and the sequence numbers all come
+back from the same file. There is no session state anywhere else.
+
+`--continue` reopens the most recent session in this workspace. `--resume <id>`
+reopens that one. `--resume` with no id opens a picker, and so does `/resume`
+inside a running session, where choosing one switches without quitting.
+
+Only sessions recorded in this workspace are offered, because a log describes
+files another tree may not have. That comparison resolves symlinks first: a
+string comparison refused sessions the workspace had recorded itself, since
+macOS reaches `/tmp` and `/var` through links.
+
+A session's log is written on its first event, not at launch, so looking around
+and quitting leaves nothing behind.
+
 ## Commands
 
 Typing `/` lists them with what each one does, filtered as you type. Typed into the composer with a leading `/`. They are the user acting on the
@@ -136,7 +158,7 @@ something the agent said.
 | `/restore <seqs>` | put those events back into context |
 | `/model [name]` | show what the backend offers, or switch |
 | `/sessions` | sessions recorded in this workspace |
-| `/resume <id>` | how to continue an earlier one |
+| `/resume [id]` | switch to an earlier session, or pick one from a list |
 | `/checkpoints` | git snapshots taken before edits |
 | `/clear` | start a fresh conversation, keeping the log |
 
@@ -210,6 +232,7 @@ is what proves the boundary held.
 | Typing stays live during a turn | `bun run scripts/queue-check.tsx` | passing |
 | Esc kills the process tree, keeps partial output | `bun run scripts/cancel-check.ts` | passing |
 | A session survives the process that made it | `bun run scripts/resume-check.ts` | passing |
+| Resume works from the terminal client, end to end | `bun run resume:check` | passing |
 | Commands run locally and stay out of the model's context | `bun run scripts/commands-check.tsx` | passing |
 | Resizing does not reprint, and the live region stays bounded | `bun run scripts/resize-check.tsx` | passing |
 | Sandbox blocks writes and egress | `bun run scripts/sandbox-check.ts` | passing |

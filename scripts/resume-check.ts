@@ -8,7 +8,8 @@
  * session recorded somewhere else is refused rather than replayed against the
  * wrong tree.
  */
-import { mkdtempSync, writeFileSync, readFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync, statSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -110,5 +111,54 @@ let refused = false;
 try { resume(sessionId, sessionsDir, mkdtempSync(join(tmpdir(), "other-"))); }
 catch { refused = true; }
 check("resuming against a different workspace is refused", refused);
+
+// ---- the command line ------------------------------------------------------
+//
+// Everything above drives `resume()` and the loop in process, which is why it
+// stayed green while `agent --resume` was broken: the argument handling in
+// front of it was never run. These spawn the real CLI.
+
+const cli = new URL("../src/cli/headless.ts", import.meta.url).pathname;
+const agent = (...args: string[]) => {
+  const r = spawnSync(process.execPath, ["run", cli, ...args], {
+    cwd: ws,
+    encoding: "utf8",
+    env: { ...process.env, MODEL: "scripted-not-used" },
+  });
+  return { out: `${r.stdout ?? ""}${r.stderr ?? ""}`, code: r.status ?? -1 };
+};
+/** A raw throw reaching the user is the failure these replaced. */
+const crashed = (out: string) => /ENOENT|\bat [a-zA-Z]+ \(|Bun v\d/.test(out);
+
+const noId = agent("--resume", "--yes");
+check("--resume with no id lists the sessions instead of crashing",
+  noId.code === 0 && noId.out.includes(sessionId) && !crashed(noId.out),
+  `exit ${noId.code}: ${noId.out.slice(0, 160)}`);
+// Checking for the old raw ENOENT path would pass now that the message is
+// readable, so this checks the flag is never treated as an id at all.
+check("and it does not read the next flag as a session id",
+  !/no session\s+--/.test(noId.out), noId.out.slice(0, 160));
+
+const trailing = agent("--yes", "--resume");
+check("--resume as the last argument lists too, rather than silently starting a new session",
+  trailing.code === 0 && trailing.out.includes(sessionId) && !crashed(trailing.out),
+  `exit ${trailing.code}: ${trailing.out.slice(0, 160)}`);
+
+const bad = agent("--resume", "nosuchid", "hello", "--yes");
+check("an unknown id is named and refused, without a stack trace",
+  bad.code === 1 && bad.out.includes("nosuchid") && !crashed(bad.out),
+  `exit ${bad.code}: ${bad.out.slice(0, 160)}`);
+check("and it still shows what there is to resume", bad.out.includes(sessionId));
+
+const sizeBefore = statSync(join(sessionsDir, `${sessionId}.jsonl`)).size;
+const noPrompt = agent("--resume", sessionId, "--yes");
+check("--resume with no instruction is a usage error, not a turn on an empty prompt",
+  noPrompt.code === 1 && noPrompt.out.includes("usage"), `exit ${noPrompt.code}: ${noPrompt.out.slice(0, 160)}`);
+check("and it appended nothing to the log",
+  statSync(join(sessionsDir, `${sessionId}.jsonl`)).size === sizeBefore);
+
+const bare = agent();
+check("no arguments at all is a usage error", bare.code === 1 && bare.out.includes("usage"),
+  `exit ${bare.code}: ${bare.out.slice(0, 120)}`);
 
 process.exit(failures ? 1 : 0);

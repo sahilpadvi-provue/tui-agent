@@ -104,7 +104,9 @@ Keep both guardrails for any model. If you add an edit primitive, it must not as
 ```bash
 bun run tui                                  # terminal client (needs a real TTY)
 bun run agent "<task>" --yes                 # headless, no UI — the boundary proof
-bun run agent --resume <id> "<task>"         # continue a session
+bun run tui --continue                       # reopen the most recent session
+bun run tui --resume [id]                    # pick one, or reopen that one
+bun run agent --resume <id> "<task>"         # continue a session, headless
 bun run replay .sessions/<id>.jsonl          # rebuild a conversation from its log
 bun run sessions list|context|restore|checkpoints
 bun x tsc --noEmit                           # run on every change
@@ -138,6 +140,7 @@ bun run colour:check                                   # no 24-bit colour on a t
 bun run md:check                                       # emphasis survives the renderer
 bun run scripts/keys-check.tsx                         # every key binding edits what it claims to
 bun run backend:check                                  # every renderer backend draws the same screen
+bun run resume:check                                   # resume works from the terminal client
 ```
 
 ## Attribution

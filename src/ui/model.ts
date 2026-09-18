@@ -49,10 +49,20 @@ const MAX_TOOL_OUTPUT = 4000;
 
 
 
-export type ViewAction = AgentEvent | { kind: "clear" };
+export type ViewAction =
+  | AgentEvent
+  | { kind: "clear" }
+  | { kind: "seed"; events: readonly AgentEvent[] };
 
 export function reduce(s: ViewState, action: ViewAction): ViewState {
   if ("kind" in action && action.kind === "clear") return cleared(s);
+  // Switching sessions replaces the screen with a fold over the other log.
+  // Folding rather than storing a rendered transcript is what keeps one code
+  // path between a live session and a resumed one: if the fold is wrong, it is
+  // wrong live too, where it would be noticed.
+  if ("kind" in action && action.kind === "seed") {
+    return action.events.reduce<ViewState>((acc, e) => reduce(acc, e), initialState);
+  }
   const e = action as AgentEvent;
   const items = s.items;
   switch (e.type) {

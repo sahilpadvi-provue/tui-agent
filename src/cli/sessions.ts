@@ -1,5 +1,5 @@
 /** Session inspection: list, show what compaction hid, and restore it. */
-import { listSessions, resume } from "../core/session.ts";
+import { listSessions, resume, sessionLine } from "../core/session.ts";
 import { project } from "../core/projection.ts";
 import { listCheckpoints } from "../exec/checkpoint.ts";
 
@@ -9,9 +9,7 @@ switch (cmd) {
   case "list": {
     const sessions = listSessions();
     if (!sessions.length) { console.log("no sessions"); break; }
-    for (const s of sessions) {
-      console.log(`${s.id}  ${s.lastAt.slice(0, 19)}  ${String(s.events).padStart(5)} events  ${s.firstPrompt.slice(0, 50)}`);
-    }
+    for (const s of sessions) console.log(sessionLine(s));
     break;
   }
 

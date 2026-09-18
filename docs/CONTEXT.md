@@ -130,6 +130,9 @@ it. Ink is a dev dependency, now both the second backend and the control arm in
 
 - Composer is a real line editor: cursor movement, word jumps (alt-arrows,
   alt-b/f), ctrl-a/e/w/u/k, history with draft preservation, `?` shortcut list.
+- Resume works from the terminal client: `--continue` for the most recent,
+  `--resume [id]` to pick or reopen, and `/resume` switching in place without
+  quitting. Only sessions from this workspace are offered.
 - Multi-row prompts. `ctrl-j` inserts a line break, the composer draws a column
   of rows with the `›` marker on the first and the rest indented to its width,
   and the arrows move by row while there is a row to move to -- up on the first
@@ -147,14 +150,27 @@ it. Ink is a dev dependency, now both the second backend and the control arm in
 - ~20 gate scripts in `scripts/` (`*-check`, `*-smoke`): boundary, sandbox,
   cancel, resume, checkpoint, log-equivalence, queue, commands, keys, resize,
   quiet-resize, colour, markdown, input, render, host, app, quit, backend,
-  ui-smoke. These are the primary check; they prove behaviour end to end.
-  All 18 runnable ones pass as of this writing.
+  resume-ui, ui-smoke. These are the primary check; they prove behaviour end to
+  end. All 20 runnable ones pass as of this writing.
 - `bun test src/` — unit tests for `editor.ts` and `layout.ts` (64 tests), a
   complement to the gates, not a replacement.
 - 5 eval fixtures in `evals/`.
 
 ## Hard-won gotchas
 
+- **A gate can pass while the feature is unusable.** `resume-check` drove
+  `resume()` and the loop in process with a scripted model and never spawned a
+  CLI, so it was green the whole time `agent --resume` crashed on a missing id
+  and the TUI could not resume at all. When a gate and a bug report disagree,
+  the gate is probably testing a narrower path than the one that was used.
+- **Resolve paths before comparing them.** `resume()` compared `meta.cwd` to
+  `process.cwd()` as strings, so macOS refused sessions the workspace had
+  recorded itself: `/var` and `/tmp` are symlinks and the two spellings never
+  matched. `CLAUDE.md` already had the rule; the code did not follow it.
+- **Writing a session's log at launch is not free.** It created the file before
+  `--resume` had been read, so every resumed launch left an empty session
+  behind and `--continue` then picked that one. It is also where a workspace's
+  `0 events` sessions came from. The log is written on the first event now.
 - **A deliberate newline must not take the paste path.** `insert()` turns
   anything containing a newline into a `[Pasted text]` chip, which is right for
   a paste and wrong for one typed line break -- the first cut of `ctrl-j` went

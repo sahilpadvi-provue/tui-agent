@@ -25,6 +25,7 @@ const ws = mkdtempSync(join(tmpdir(), "cmd-"));
 let switched = "";
 let cleared = false;
 let restored: number[] = [];
+let resumed: string | null = null;
 
 const history: AgentEvent[] = [
   { seq: 0, at: "", sessionId: "s", type: "message.started", id: "u", role: "user" },
@@ -41,6 +42,7 @@ const ctx: CommandContext = {
   setModel: (n) => { switched = n; },
   clear: () => { cleared = true; },
   restore: (s) => { restored = s; },
+  resume: (id) => { resumed = id; },
 };
 
 const help = await runCommand("/help", ctx);

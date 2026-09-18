@@ -37,6 +37,12 @@ export type CommandContext = {
   clear(): void;
   /** Un-hides compacted events. */
   restore(seqs: number[]): void;
+  /**
+   * Switches this client to another session: its log, its sequence and its
+   * transcript, in one step. Throws with a readable message if the id is
+   * unknown or the session was recorded against a different workspace.
+   */
+  resume(sessionId: string): void;
 };
 
 export type CommandResult = { ok: boolean; output: string };
@@ -114,16 +120,19 @@ const sessions: Command = {
 const resumeCmd: Command = {
   name: "resume",
   takes: "<id>",
-  summary: "how to continue an earlier session",
-  run: async (rest) => {
+  summary: "continue an earlier session",
+  run: async (rest, ctx) => {
     const id = rest.trim();
+    // No id is not an error: the composer shows the session list while the
+    // argument is empty, so reaching here means the list was dismissed.
     if (!id) return { ok: false, output: "usage: /resume <id>   (see /sessions)" };
-    // Swapping the session in place means replacing the log, the bus and the
-    // printed transcript at once. Until that is built, say the true thing.
-    return {
-      ok: true,
-      output: `not switchable in place yet — quit and run:\n  bun run agent --resume ${id} "<instruction>"`,
-    };
+    if (id === ctx.sessionId) return { ok: true, output: `already in ${id}` };
+    try {
+      ctx.resume(id);
+    } catch (e) {
+      return { ok: false, output: e instanceof Error ? e.message : String(e) };
+    }
+    return { ok: true, output: `resumed ${id}` };
   },
 };
 

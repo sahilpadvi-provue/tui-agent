@@ -16,33 +16,78 @@ import { builtinTools } from "../tools/builtin.ts";
 import { PermissionPolicy, radiusLines } from "../permissions/policy.ts";
 import { OllamaClient } from "../model/ollama.ts";
 import { SYSTEM_PROMPT } from "../core/prompt.ts";
-import { resume } from "../core/session.ts";
+import { listSessions, resume, sessionLine } from "../core/session.ts";
 
-const task = process.argv.slice(2).join(" ");
-if (!task) {
-  console.error('usage: bun run src/cli/headless.ts "<task>"  [--yes]');
-  process.exit(1);
-}
 const autoApprove = process.argv.includes("--yes");
 const noSandbox = process.argv.includes("--no-sandbox");
+const wantsResume = process.argv.some((a) => a === "--resume" || a.startsWith("--resume="));
 const resumeId = argValue("--resume");
-const prompt = task
+
+// `--resume` with nothing after it asks which session, so answer that rather
+// than guessing. It used to read the next flag as the id and die on an ENOENT
+// for `.sessions/--yes.jsonl`, or, with `--resume` last, silently start a new
+// session -- the worst of the three, because it looks like it resumed.
+if (wantsResume && !resumeId) {
+  process.exit(printResumable() ? 0 : 1);
+}
+
+const prompt = process.argv
+  .slice(2)
+  .join(" ")
   .replace(/\s*--yes\s*/, " ")
   .replace(/\s*--no-sandbox\s*/, " ")
   .replace(/\s*--resume(=|\s+)\S+\s*/, " ")
   .trim();
 
+// An empty prompt used to reach the loop, which ran a turn on nothing and
+// answered the previous question again. That reads as a resume that ignored
+// the instruction rather than as a command with a missing argument.
+if (!prompt) {
+  console.error(
+    wantsResume
+      ? `usage: bun run agent --resume ${resumeId} "<instruction>"`
+      : 'usage: bun run agent "<task>" [--yes] [--no-sandbox] [--resume <id>]',
+  );
+  process.exit(1);
+}
+
 function argValue(flag: string): string | undefined {
   const i = process.argv.findIndex((a) => a === flag || a.startsWith(flag + "="));
   if (i === -1) return undefined;
   const a = process.argv[i]!;
-  return a.includes("=") ? a.split("=")[1] : process.argv[i + 1];
+  if (a.includes("=")) return a.split("=")[1];
+  const next = process.argv[i + 1];
+  // A flag is not a value.
+  return next === undefined || next.startsWith("-") ? undefined : next;
+}
+
+/** The sessions there are to resume. False when there are none. */
+function printResumable(): boolean {
+  const sessions = listSessions();
+  if (!sessions.length) {
+    console.error("no sessions in .sessions/ to resume");
+    return false;
+  }
+  console.log("\nresume one of these:\n");
+  for (const s of sessions.slice(0, 15)) console.log(`  ${sessionLine(s)}`);
+  if (sessions.length > 15) console.log(`  \u2026 ${sessions.length - 15} older`);
+  console.log('\n  bun run agent --resume <id> "<instruction>"');
+  return true;
 }
 
 const cwd = process.cwd();
 const model = new OllamaClient(process.env.MODEL ?? "qwen3:8b");
 
-const prior = resumeId ? resume(resumeId) : undefined;
+let prior: ReturnType<typeof resume> | undefined;
+if (resumeId) {
+  try {
+    prior = resume(resumeId);
+  } catch (e) {
+    console.error(`\x1b[31m${e instanceof Error ? e.message : String(e)}\x1b[0m`);
+    printResumable();
+    process.exit(1);
+  }
+}
 const sessionId = prior?.meta.sessionId ?? randomUUID().slice(0, 8);
 const bus = prior?.bus ?? new EventBus();
 const log = prior?.log ?? new EventLog(".sessions", sessionId);
@@ -59,7 +104,7 @@ bus.on((e) => {
   switch (e.type) {
     case "context.compacted":
       console.log(`\x1b[33m[compacted] ${e.droppedSeqs.length} events hidden — ${e.summary}\x1b[0m`);
-      console.log(`\x1b[2m           ${e.reason}  (restore with: bun run restore ${sessionId} ${e.droppedSeqs.join(",")})\x1b[0m`);
+      console.log(`\x1b[2m           ${e.reason}  (restore with: bun run sessions restore ${sessionId} ${e.droppedSeqs.join(",")})\x1b[0m`);
       break;
     case "message.delta":
       process.stdout.write(e.text);

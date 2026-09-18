@@ -38,6 +38,14 @@ The terminal client. One subscriber to the event bus among several that could ex
 
 **Settled output is append-only.** Items that can no longer change go to `Settled` and, under the Ink backend, are printed once and never redrawn. `countSettled` stops at the first live item so the list only ever grows. Re-keying or reordering it reprints the whole transcript — the documented way agent TUIs collapse.
 
+**A resumed transcript is a fold over the other log, not a stored one.** `/resume` and `--resume` hand the UI a `seed` array and the reducer folds it from `initialState`, which keeps one code path between a live session and a resumed one: if the fold is wrong it is wrong live too, where somebody notices. A new array is the signal, so re-rendering with the same one does nothing.
+
+**A session swap has to reset the printed-row bookkeeping.** `Settled` output is printed once and never reprinted, so leaving `printed` populated across a swap keeps rows from the session you left and counts the new one's rows as already drawn. `/clear` had this right; resume had to do the same thing.
+
+**The session picker is the command palette's mechanism, reused.** `/resume ` with an empty argument lists sessions where the command list would be, filtered by id or by what the session was first asked, with the same arrow selection and the same row cap. The two lists are never open together: once the command is named and a space typed, the thing being chosen is a session. That is also why `/resume` completes to `/resume ` rather than running -- the space is what opens the picker.
+
+**The picker takes display rows, not `SessionSummary`.** Reading the log directory stays in `cli/`, so `ui/` keeps its distance from `core/` and choosing a session still goes out through `onCommand` rather than through a new callback.
+
 **The conversation still lives in `model.ts`, not the terminal.** Scrollback is where settled output is *displayed*; the event log remains the source of truth. Never read state back off the screen.
 
 **Full-width chrome is fine now, and that is the point of the renderer.** The composer's two rules are the width of the terminal, which under Ink was exactly what leaked on every narrowing: it erased its last frame by logical line count while the terminal had already re-wrapped to physical rows. Removing the chrome fixed it and was rejected on how it looked. Owning the cells fixed it without that trade. `scripts/reflow-check.tsx` measured the old defect and is gone with it; `scripts/render-check.tsx` now shows the difference with Ink driven as a control arm.

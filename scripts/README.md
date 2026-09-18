@@ -12,6 +12,7 @@ Gate scripts. Each one is a claim about the system that can fail loudly.
 | `ui-smoke.tsx` | The UI renders a frame, including the permission prompt |
 | `cancel-check.ts` | Esc kills the whole process tree and keeps what was already printed |
 | `resume-check.ts` | A resumed session carries its history, continues its sequence, and refuses the wrong tree |
+| `resume-ui-check.tsx` | The terminal client launches into a session, picks one from a list, and switches without quitting |
 | `log-equivalence.tsx` | Mounting the UI changes nothing the runtime records |
 | `queue-check.tsx` | Typing is never blocked; Enter queues and the queue flushes on idle |
 | `backend-check.tsx` | Every renderer backend draws the same screen, for the synthetic tree and for the real `App` |

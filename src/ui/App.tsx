@@ -18,7 +18,14 @@ import { SHORTCUTS } from "./shortcuts.ts";
 import { radiusLines } from "../permissions/policy.ts";
 import { COMMANDS, isCommand } from "../commands/registry.ts";
 import type { EventBus } from "../core/bus.ts";
-import type { PermissionDecision } from "../core/events.ts";
+import type { AgentEvent, PermissionDecision } from "../core/events.ts";
+
+/**
+ * A session as the picker shows it. Display rows rather than `SessionSummary`,
+ * so reading the log directory stays in `cli/` and `ui/` keeps its distance
+ * from `core/`.
+ */
+export type SessionChoice = { id: string; label: string };
 
 export type AppProps = {
   bus: EventBus;
@@ -37,6 +44,15 @@ export type AppProps = {
   onCancel: () => void;
   onPermission: (d: PermissionDecision) => void;
   busy: boolean;
+  /** What `/resume` offers. Empty in a workspace with no earlier sessions. */
+  sessions?: readonly SessionChoice[];
+  /**
+   * The transcript to show instead of whatever is on screen. A new array means
+   * a new session: launching with `--resume`, or `/resume` switching in place.
+   */
+  seed?: readonly AgentEvent[];
+  /** Pre-fills the composer. `--resume` with no id uses it to open the picker. */
+  initialInput?: string;
 };
 
 /**
@@ -51,15 +67,16 @@ export type AppProps = {
 export function App({
   bus, cwd, model, version, backend, sandbox, branch,
   onSubmit, onCommand, onCancel, onPermission, busy,
+  sessions = [], seed, initialInput,
 }: AppProps) {
   const [state, dispatch] = useReducer(reduce, initialState);
-  const [input, setInput] = useState("");
+  const [input, setInput] = useState(initialInput ?? "");
   const [confirmQuit, setConfirmQuit] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [queued, setQueued] = useState<string[]>([]);
   const [phase, setPhase] = useState(0);
   const [selected, setSelected] = useState(0);
-  const [cursor, setCursor] = useState(0);
+  const [cursor, setCursor] = useState(initialInput?.length ?? 0);
   const [sent, setSent] = useState<string[]>([]);
   const [recalling, setRecalling] = useState<number | null>(null);
   const [draft, setDraft] = useState("");
@@ -86,6 +103,21 @@ export function App({
       dispatch(e);
     }),
   [bus]);
+
+  /**
+   * Switching sessions replaces the screen.
+   *
+   * The printed-row bookkeeping has to go with it. `Settled` output is printed
+   * once and never reprinted, so leaving `printed` populated would keep rows
+   * from the session just left and count the new one's rows as already drawn.
+   */
+  useEffect(() => {
+    if (!seed) return;
+    printed.current = [];
+    consumed.current = 0;
+    lastKindRef.current = null;
+    dispatch({ kind: "seed", events: seed });
+  }, [seed]);
 
   useEffect(() => {
     if (wasBusy.current && !busy && queued.length > 0) {
@@ -229,8 +261,16 @@ export function App({
 
     setConfirmQuit(false);
 
-    // Arrows belong to the list while it is open, and to history otherwise.
-    if (paletteOpen) {
+    // Arrows belong to whichever list is open, and to the prompt otherwise.
+    if (pickerOpen) {
+      if (key.upArrow) return setSelected((n) => Math.max(0, n - 1));
+      if (key.downArrow) return setSelected((n) => Math.min(pickerCount - 1, n + 1));
+      if (key.tab) {
+        const pick = pickerAt(selected);
+        if (pick) put(`/resume ${pick.id}`);
+        return;
+      }
+    } else if (paletteOpen) {
       if (key.upArrow) return setSelected((n) => Math.max(0, n - 1));
       if (key.downArrow) return setSelected((n) => Math.min(paletteCount - 1, n + 1));
       if (key.tab) {
@@ -280,6 +320,19 @@ export function App({
     if (key.ctrl && char === "j") return write("\n");
 
     if (key.return) {
+      // A highlighted session runs straight away. There is nothing to complete
+      // -- the id IS the argument, so completing it would just ask again.
+      if (pickerOpen) {
+        const pick = pickerAt(selected);
+        if (pick) {
+          const full = `/resume ${pick.id}`;
+          put("");
+          setSelected(0);
+          remember(full);
+          onCommand(full);
+          return;
+        }
+      }
       // Enter takes the highlighted command. One that needs an argument is
       // completed rather than run, because running it would only produce its
       // usage line.
@@ -344,10 +397,30 @@ export function App({
     return `[Pasted text #${pasteId(mark)} +${lines} lines]`;
   };
 
+  /**
+   * `/resume ` opens the session list where the command list would be.
+   *
+   * The two cannot both be open: once the command is named and a space typed,
+   * the thing being chosen is a session, and the argument filters it by id or
+   * by what the session was first asked. This is why `/resume` completes to
+   * `/resume ` rather than running -- the space is what opens the picker.
+   */
+  const resumeArg = /^\/resume\s(.*)$/.exec(input)?.[1] ?? null;
+  const matchingSessions = resumeArg === null
+    ? []
+    : sessions.filter(
+        (s) =>
+          s.id.startsWith(resumeArg) ||
+          s.label.toLowerCase().includes(resumeArg.toLowerCase()),
+      );
+  const pickerOpen = matchingSessions.length > 0 && !dismissed;
+  const pickerCount = Math.min(matchingSessions.length, PALETTE_ROWS);
+  const pickerAt = (n: number) => matchingSessions[n];
+
   const matchingCommands = input.startsWith("/")
     ? COMMANDS.filter((c) => c.name.startsWith(input.slice(1).split(" ")[0] ?? ""))
     : [];
-  const paletteOpen = matchingCommands.length > 0 && !dismissed;
+  const paletteOpen = matchingCommands.length > 0 && !dismissed && !pickerOpen;
   const paletteCount = Math.min(matchingCommands.length, PALETTE_ROWS);
   const paletteAt = (n: number) => matchingCommands[n];
 
@@ -416,6 +489,8 @@ export function App({
    */
   const palette = paletteOpen ? matchingCommands.slice(0, PALETTE_ROWS) : [];
   const moreCommands = matchingCommands.length - palette.length;
+  const picker = pickerOpen ? matchingSessions.slice(0, PALETTE_ROWS) : [];
+  const moreSessions = matchingSessions.length - picker.length;
 
   return (
     <>
@@ -509,6 +584,28 @@ export function App({
           </Stack>
         )}
 
+        {picker.length > 0 && (
+          <Stack direction="column" padX={GUTTER}>
+            {picker.map((s, i) => {
+              const on = i === selected;
+              return (
+                <Label key={s.id}>
+                  <Label color={on ? "cyan" : undefined}>{on ? "\u203a " : "  "}</Label>
+                  <Label bg={on ? BAND : undefined} color="cyan" bold={on}>
+                    {s.id.padEnd(ID_COLUMN)}
+                  </Label>
+                  <Label bg={on ? BAND : undefined} dim={!on}>
+                    {clip(s.label, term - GUTTER - ID_COLUMN - 4)}
+                  </Label>
+                </Label>
+              );
+            })}
+            {moreSessions > 0 && (
+              <Label dim>{`${" ".repeat(ID_COLUMN + 2)}\u2026 ${moreSessions} older`}</Label>
+            )}
+          </Stack>
+        )}
+
         {palette.length > 0 && (
           <Stack direction="column" padX={GUTTER}>
             {palette.map((c, i) => {
@@ -578,6 +675,9 @@ const CURSOR = "#c8c8c8";
 
 /** Width of the command column, so the descriptions line up. */
 const NAME_COLUMN = 22;
+
+/** Width of the session id column, so the first prompts line up. */
+const ID_COLUMN = 10;
 
 /** Width of the key column in the shortcut list. */
 const KEY_COLUMN = 18;
