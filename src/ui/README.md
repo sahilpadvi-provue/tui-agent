@@ -174,6 +174,10 @@ It is `ctrl-j` and not Shift+Enter because in a terminal without the kitty keybo
 
 **Verifying colour needs the escapes, not the text.** Two traps, both of which cost time here: `FORCE_COLOR=3` must be set or Ink strips every code and the output looks unstyled; and chalk usually runs at level 2, so a hex colour is emitted as 256-colour `38;5;N`, not truecolor `38;2;r;g;b`. Searching for the wrong form reads as "the feature is broken". Also note that per-character styling means a styled word never appears as a contiguous string in the buffer — grepping for it finds nothing.
 
+**A gate that reads text proves what was drawn, never how.** The general case of the rule above, and it has cost three defects. `renderToText` strips escapes, so `backend-check` can hold both backends to the same characters while saying nothing about weight: an attribute forwarded in one renderer and forgotten in the other is invisible to it. Every attribute needs an assertion on the bytes, or it can be dropped in silence.
+
+The three were `/clear` falling off the end of the palette when a ninth command was added, a timer outliving the row it animated, and `Row` forwarding colour, dim and bold but not italic or underline. **None of them was a wrong answer.** Each rendered as something correct with a piece missing — and that is why they survived gates that were otherwise good. A wrong answer has something to compare against; a missing one has nothing, unless a test goes looking for it specifically. When adding a channel, a command, or a timer, the question is not "does it work" but "what asserts that it is still there".
+
 ## Rendering discipline
 
 - Bound every output. Tool output is capped in the view model, not just at the tool.
