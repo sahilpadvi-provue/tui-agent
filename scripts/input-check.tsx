@@ -69,6 +69,53 @@ check("and arrives whole when the terminator lands",
 
 check("its newlines never became Enter", second.events.length === 0);
 
+// --- line endings ---------------------------------------------------------
+//
+// Each delimiter style separately, because one passing says nothing about the
+// others. LF worked while CRLF submitted every Windows paste at its first line
+// break, and a single "a paste inserts newlines" assertion was green for it.
+
+/** Enter, the newline key, or the text -- the three things the composer acts on. */
+const acted = (p: Parser, data: string) =>
+  p.push(data).events.map((e) =>
+    e.key.return ? "enter" : e.key.ctrl && e.char === "j" ? "newline" : e.char || "?");
+const one = (data: string) => acted(new Parser(), data).join(",");
+
+check("LF is the newline key, not Enter", one("one\ntwo") === "one,newline,two", one("one\ntwo"));
+check("CRLF is one newline, not Enter and then one",
+  one("one\r\ntwo") === "one,newline,two", one("one\r\ntwo"));
+// A CR with nothing after it cannot be told from Enter -- same byte, no
+// lookahead left -- so a pre-OSX CR-only paste is not fixable here. Asserted
+// as Enter so the limit is recorded rather than discovered.
+check("a lone CR is Enter, which is what makes CR-only pastes unfixable",
+  one("one\rtwo") === "one,enter,two", one("one\rtwo"));
+
+check("a real Enter still submits", one("\r") === "enter", one("\r"));
+check("two real Enters in one chunk are still two",
+  one("\r\r") === "enter,enter", one("\r\r"));
+check("Enter at the end of a run still submits", one("ab\r") === "ab,enter", one("ab\r"));
+
+// The CR of a CRLF pair can land at the end of one read with its LF in the
+// next. The CR has already gone out as Enter by then and cannot be recalled,
+// so the LF is swallowed: the paste still submits early, but it does not also
+// leave a stray newline in the prompt that follows.
+const boundary = new Parser();
+const beforeBreak = acted(boundary, "one\r").join(",");
+const afterBreak = acted(boundary, "\ntwo").join(",");
+check("a CRLF split across reads does not leave a stray newline behind",
+  beforeBreak === "one,enter" && afterBreak === "two", `${beforeBreak} | ${afterBreak}`);
+
+// And the swallow must not eat a real one. Enter, then typing, then a
+// deliberate ctrl-j: only the LF immediately after the CR is ever dropped.
+const typing = new Parser();
+acted(typing, "ab\r");
+check("and typing after an Enter is untouched", acted(typing, "cd").join(",") === "cd");
+const later = new Parser();
+acted(later, "ab\r");
+acted(later, "cd");
+check("a ctrl-j pressed later is still a newline",
+  acted(later, "\n").join(",") === "newline", acted(later, "\n").join(","));
+
 // --- unmounting leaves the frame ------------------------------------------
 
 // Several rows, because a one-row frame does not reproduce it: unmount writes

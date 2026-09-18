@@ -100,6 +100,28 @@ The indirection costs about 6% of streaming throughput (2997 against 2806
 deltas/sec, three runs each): one extra fiber per element, plus a context read.
 Bytes written and frame count are unchanged.
 
+## The composer
+
+Enter sends. `ctrl-j` inserts a line break, and the prompt grows a row at a
+time, with the `›` marker on the first row and the rest indented to align
+with the text. The arrows move by row while there is a row to move to; on the
+first row, up is still history. `?` on an empty prompt lists every binding.
+
+It is `ctrl-j` rather than Shift+Enter because in a terminal without the kitty
+keyboard protocol those are the same byte -- Shift+Enter sends `\r`, exactly as
+Enter does, and nothing in the application can tell them apart. Codex defaults
+to `ctrl-j` for the same reason, Claude Code offers `ctrl-j` and `\` then Enter
+in every terminal and treats Shift+Enter as a per-terminal enhancement on top,
+and OpenTUI's textarea binds newline to return and linefeed and moves submit to
+meta+return. Shift+Enter can be layered on later through the kitty protocol;
+`ctrl-j` stays underneath it, because enabling that protocol re-encodes escape,
+tab, backspace and every ctrl binding as `CSI u` and a half-answering terminal
+must not be able to take `ctrl-c` away.
+
+A multi-line paste is still a single `[Pasted text #1 +13 lines]` chip rather
+than rows: one deliberate line break is not a block worth collapsing, and a
+pasted stack trace is.
+
 ## Commands
 
 Typing `/` lists them with what each one does, filtered as you type. Typed into the composer with a leading `/`. They are the user acting on the

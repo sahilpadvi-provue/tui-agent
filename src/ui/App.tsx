@@ -11,8 +11,8 @@ import {
   type Line as L,
 } from "./layout.ts";
 import {
-  composerPieces, expandPastes, normalizeNewlines, pasteId, pasteMark,
-  wordLeft, wordRight,
+  composerRows, expandPastes, normalizeNewlines, pasteId, pasteMark,
+  rowDown, rowUp, wordLeft, wordRight,
 } from "./editor.ts";
 import { SHORTCUTS } from "./shortcuts.ts";
 import { radiusLines } from "../permissions/policy.ts";
@@ -158,21 +158,28 @@ export function App({
     setDraft("");
   };
 
+  /** Puts a piece at the cursor, verbatim. The one place the prompt grows. */
+  const write = (piece: string) => {
+    setSelected(0);
+    setDismissed(false);
+    put(input.slice(0, cursor) + piece + input.slice(cursor), cursor + piece.length);
+  };
+
   /**
    * Typed and pasted text take the same path in, so both are normalized and
    * both can produce a chip -- a terminal that ignores the bracketed-paste
    * request still delivers a paste here, in chunks.
+   *
+   * A newline typed with ctrl-j goes through `write` instead. It has to: a
+   * block big enough to be worth collapsing is what earns a chip, and one
+   * deliberate line break is not that.
    */
   const insert = (text: string) => {
     const clean = normalizeNewlines(text);
-    let piece = clean;
-    if (clean.includes("\n")) {
-      piece = pasteMark(pasted.current++);
-      pastes.current.set(piece, clean);
-    }
-    setSelected(0);
-    setDismissed(false);
-    put(input.slice(0, cursor) + piece + input.slice(cursor), cursor + piece.length);
+    if (!clean.includes("\n")) return write(clean);
+    const mark = pasteMark(pasted.current++);
+    pastes.current.set(mark, clean);
+    write(mark);
   };
 
   // Paste is its own channel, so a pasted line break can never be read as a
@@ -232,8 +239,18 @@ export function App({
         return;
       }
     } else {
-      if (key.upArrow) return recall(-1);
-      if (key.downArrow) return recall(1);
+      // A multi-row prompt takes the arrows, but only while there is a row to
+      // go to. Up on the first row is still history, which is what keeps that
+      // binding reachable on the single-row prompt this started as -- and why
+      // `rowUp` declines rather than clamping.
+      if (key.upArrow) {
+        const up = rowUp(input, cursor);
+        return up === null ? recall(-1) : setCursor(up);
+      }
+      if (key.downArrow) {
+        const down = rowDown(input, cursor);
+        return down === null ? recall(1) : setCursor(down);
+      }
     }
     if (key.ctrl && char === "p") return recall(-1);
     if (key.ctrl && char === "n") return recall(1);
@@ -255,6 +272,12 @@ export function App({
     }
     if (key.ctrl && char === "u") return put(input.slice(cursor), 0);
     if (key.ctrl && char === "k") return put(input.slice(0, cursor), cursor);
+
+    // The newline key. Shift-Enter is byte-identical to Enter in a terminal
+    // without the kitty protocol, so it cannot be the one -- ctrl-j is what
+    // every other agent CLI settled on for the same reason. It is the LF byte
+    // itself, which is why the parser stopped reading LF as Enter.
+    if (key.ctrl && char === "j") return write("\n");
 
     if (key.return) {
       // Enter takes the highlighted command. One that needs an argument is
@@ -435,44 +458,53 @@ export function App({
           </Stack>
         ) : (
           <Stack
-            direction="row"
+            direction="column"
             padX={GUTTER}
             border
             borderSides="y"
             borderDim={!confirmQuit}
             borderColor={confirmQuit ? "yellow" : undefined}
           >
-            <Label color={confirmQuit ? "yellow" : "cyan"}>
-              {confirmQuit ? "! " : "\u203a "}
-            </Label>
             {confirmQuit ? (
-              <Label color="yellow">ctrl-c again to exit, any key to stay</Label>
+              <Stack direction="row">
+                <Label color="yellow">{"! "}</Label>
+                <Label color="yellow">ctrl-c again to exit, any key to stay</Label>
+              </Stack>
             ) : (
-              <Label>
-                {composerPieces(input, cursor, chipLabel).map((piece, i) => (
-                  <Label
-                    key={i}
-                    bg={piece.cursor ? CURSOR : undefined}
-                    color={piece.cursor ? "black" : undefined}
-                  >
-                    {piece.text}
+              composerRows(input, cursor, chipLabel).map((row, r) => (
+                <Stack key={r} direction="row">
+                  {/* Only the first row is marked, and the rest are indented
+                      to the marker's width so a multi-row prompt reads as one
+                      block of text rather than as a list of entries. */}
+                  <Label color="cyan">{r === 0 ? "\u203a " : "  "}</Label>
+                  <Label>
+                    {row.pieces.map((piece, i) => (
+                      <Label
+                        key={i}
+                        bg={piece.cursor ? CURSOR : undefined}
+                        color={piece.cursor ? "black" : undefined}
+                      >
+                        {piece.text}
+                      </Label>
+                    ))}
+                    {/* At the end of a row the cursor is a bar, as it has
+                        always been. Inside the row it is a block on whatever
+                        it sits on: a bar between two characters reads as one
+                        of them, and on a chip it would read as a character of
+                        the label. */}
+                    {row.caret && <Label>{"\u258f"}</Label>}
+                    {/* The hint is not text you typed, so it must not look
+                        like it. An explicit grey reads as absent in a way SGR
+                        dim does not -- dim white is still close to white on
+                        many themes. */}
+                    {input === "" && (
+                      <Label color="gray">
+                        {busy ? " type to queue the next instruction" : " describe a change, or ask about the code"}
+                      </Label>
+                    )}
                   </Label>
-                ))}
-                {/* At the end of the line the cursor is a bar, as it has
-                    always been. Inside the line it is a block on whatever it
-                    sits on: a bar between two characters reads as one of
-                    them, and on a chip it would read as a character of the
-                    label. */}
-                {cursor >= input.length && <Label>{"\u258f"}</Label>}
-                {/* The hint is not text you typed, so it must not look like
-                    it. An explicit grey reads as absent in a way SGR dim does
-                    not -- dim white is still close to white on many themes. */}
-                {input === "" && (
-                  <Label color="gray">
-                    {busy ? " type to queue the next instruction" : " describe a change, or ask about the code"}
-                  </Label>
-                )}
-              </Label>
+                </Stack>
+              ))
             )}
           </Stack>
         )}

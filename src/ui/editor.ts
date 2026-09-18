@@ -96,3 +96,76 @@ export function composerPieces(text: string, cursor: number, label: (mark: strin
   flush();
   return pieces;
 }
+
+export type ComposerRow = { pieces: Piece[]; caret: boolean };
+
+/**
+ * The prompt as rows.
+ *
+ * A newline in the prompt is a row break, so the composer draws a column of
+ * them. The split happens here rather than in the renderer because only the
+ * first row carries the `›` marker: the renderer knows nothing about that, and
+ * continuation rows have to align with the text rather than with the marker.
+ */
+export function composerRows(
+  text: string,
+  cursor: number,
+  label: (mark: string) => string,
+): ComposerRow[] {
+  const rows: ComposerRow[] = [];
+  let start = 0;
+  for (const row of text.split("\n")) {
+    const local = cursor - start;
+    rows.push({
+      pieces: composerPieces(row, local, label),
+      // A cursor at the end of a row has no character to sit on, so it is a
+      // bar. That covers the end of the prompt and a cursor resting on a
+      // newline, which are the same position one row apart.
+      caret: local === row.length,
+    });
+    start += row.length + 1;
+  }
+  return rows;
+}
+
+/**
+ * The cursor one row up or down, or `null` when there is no such row.
+ *
+ * `null` rather than a clamp, because the caller has to tell "moved" from "at
+ * the edge": up on the first row still belongs to history, and clamping would
+ * silently take the up arrow away from it.
+ */
+export function rowUp(text: string, cursor: number): number | null {
+  return moveRow(text, cursor, -1);
+}
+
+export function rowDown(text: string, cursor: number): number | null {
+  return moveRow(text, cursor, 1);
+}
+
+function moveRow(text: string, cursor: number, by: -1 | 1): number | null {
+  const rows = text.split("\n");
+  const starts: number[] = [];
+  let offset = 0;
+  for (const row of rows) {
+    starts.push(offset);
+    offset += row.length + 1;
+  }
+
+  const at = Math.max(0, Math.min(text.length, cursor));
+  let index = rows.length - 1;
+  for (let i = 0; i < rows.length; i++) {
+    if (at <= starts[i]! + rows[i]!.length) {
+      index = i;
+      break;
+    }
+  }
+
+  const row = rows[index + by];
+  const start = starts[index + by];
+  if (row === undefined || start === undefined) return null;
+  // The column is kept where it can be. A paste chip is one character in the
+  // string and many on screen, so a column across a chip is approximate --
+  // the same trade every other binding makes for treating a chip as one.
+  return start + Math.min(at - starts[index]!, row.length);
+}

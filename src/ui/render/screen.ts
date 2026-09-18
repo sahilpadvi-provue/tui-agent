@@ -197,6 +197,31 @@ function lineCells(line: Line, width: number): Cell[] {
 const BAND = "#2a2a2a";
 
 /**
+ * A newline is a row break, not a cell.
+ *
+ * Left as a cell it is written as a raw LF into the middle of a row the diff
+ * believes is one row, so every row index after it is wrong -- the same
+ * desynchronisation ink#907 was, arriving through the content instead of
+ * through a resize. Ink splits here too, so this is also what keeps the two
+ * backends drawing the same screen.
+ */
+function breakRows(cells: Cell[]): Cell[][] {
+  if (!cells.some((c) => c.char === "\n")) return [cells];
+  const out: Cell[][] = [];
+  let row: Cell[] = [];
+  for (const cell of cells) {
+    if (cell.char === "\n") {
+      out.push(row);
+      row = [];
+      continue;
+    }
+    row.push(cell);
+  }
+  out.push(row);
+  return out;
+}
+
+/**
  * Lines to a grid.
  *
  * A line wider than the terminal becomes as many rows as it needs, which is
@@ -211,7 +236,13 @@ export function paint(lines: readonly Line[], width: number): Screen {
       rows.push([]);
       continue;
     }
-    for (let i = 0; i < cells.length; i += width) rows.push(cells.slice(i, i + width));
+    for (const segment of breakRows(cells)) {
+      if (segment.length === 0) {
+        rows.push([]);
+        continue;
+      }
+      for (let i = 0; i < segment.length; i += width) rows.push(segment.slice(i, i + width));
+    }
   }
 
   const cells: Cell[] = new Array(width * rows.length).fill(BLANK_CELL);

@@ -52,23 +52,32 @@ const SEQUENCES: Record<string, Partial<Key>> = {
 
 export type Parsed = { events: KeyEvent[]; pastes: string[] };
 
-function parseChunk(data: string, carry: string | null): Parsed & { carry: string | null } {
+function parseChunk(
+  data: string,
+  carry: string | null,
+  swallowLf: boolean,
+): Parsed & { carry: string | null; swallowLf: boolean } {
   const events: KeyEvent[] = [];
   const pastes: string[] = [];
 
   let i = 0;
   let pending = carry;
+  let swallow = false;
 
   // A paste split across two reads arrives as a body with no terminator, then
   // a terminator with the rest. Holding the body until the terminator lands is
   // what stops the newline inside it from being read as Enter.
   if (pending !== null) {
     const end = data.indexOf(PASTE_END);
-    if (end === -1) return { events: [], pastes: [], carry: pending + data };
+    if (end === -1) return { events: [], pastes: [], carry: pending + data, swallowLf: false };
     pastes.push(pending + data.slice(0, end));
     pending = null;
     i = end + PASTE_END.length;
   }
+
+  // The tail of a CRLF pair that was split across two reads. Its CR already
+  // went out as Enter, so this LF is not a ctrl-j.
+  if (swallowLf && i === 0 && data.startsWith("\n")) i = 1;
 
   // Printable characters are emitted as one event per run, not one per
   // character. A handler that rebuilds the line from its own state reads that
@@ -134,8 +143,34 @@ function parseChunk(data: string, carry: string | null): Parsed & { carry: strin
     flushRun();
     if (ch === "\x7f") {
       events.push({ char: "", key: key({ backspace: true }) });
-    } else if (ch === "\r" || ch === "\n") {
-      events.push({ char: "", key: key({ return: true }) });
+    } else if (ch === "\r") {
+      // LF alone is deliberately not Enter. It is ctrl-j, the newline key, and
+      // it falls through to the control branch below to become one.
+      //
+      // CRLF is one line break rather than Enter followed by one. That pair is
+      // what a Windows clipboard, a lot of web content, and an SSH session
+      // from a Windows host deliver, and on a terminal that ignores bracketed
+      // paste reading its CR as Enter submitted the paste at its first line
+      // break. `normalizeNewlines` covers the same thing on the paste channel;
+      // this is the typed channel catching up.
+      if (data[i + 1] === "\n") {
+        events.push({ char: "j", key: key({ ctrl: true }) });
+        i += 1;
+      } else {
+        events.push({ char: "", key: key({ return: true }) });
+        // A lone CR cannot wait to find out whether an LF follows in the next
+        // read. A real Enter press is usually the whole chunk, so holding it
+        // back would mean the prompt did nothing until the next keystroke --
+        // far worse than the case it would fix. The Enter goes out now and any
+        // LF opening the next chunk is swallowed, which confines a
+        // boundary-split CRLF to submitting early instead of also leaving a
+        // stray newline in the prompt that follows.
+        //
+        // A CR with no LF after it is genuinely indistinguishable from Enter,
+        // so a pre-OSX CR-only paste is not fixable here and is not claimed to
+        // be. Bracketed paste is the real defence and `mount` asks for it.
+        if (i === data.length - 1) swallow = true;
+      }
     } else if (ch === "\b") {
       events.push({ char: "", key: key({ backspace: true }) });
     } else if (ch === "\t") {
@@ -151,7 +186,7 @@ function parseChunk(data: string, carry: string | null): Parsed & { carry: strin
   }
   flushRun();
 
-  return { events, pastes, carry: pending };
+  return { events, pastes, carry: pending, swallowLf: swallow };
 }
 
 /**
@@ -163,10 +198,12 @@ function parseChunk(data: string, carry: string | null): Parsed & { carry: strin
  */
 export class Parser {
   #carry: string | null = null;
+  #swallowLf = false;
 
   push(data: string): Parsed {
-    const { events, pastes, carry } = parseChunk(data, this.#carry);
+    const { events, pastes, carry, swallowLf } = parseChunk(data, this.#carry, this.#swallowLf);
     this.#carry = carry;
+    this.#swallowLf = swallowLf;
     return { events, pastes };
   }
 }

@@ -60,6 +60,10 @@ const shared = (
       <Label color="green">inner</Label>
       {" tail"}
     </Label>
+    {/* A newline is a row break in both, not a cell. The cell renderer used
+        to keep it, which put a raw LF inside a row the diff counted as one
+        and desynchronised every row after it. */}
+    <Label>{"broken\nacross rows"}</Label>
     <Stack direction="row">
       <Label>left</Label>
       <Label>right</Label>
@@ -96,6 +100,10 @@ for (const { name, rows } of rendered) {
     "settled one", "settled two", "plain row", "tinted and bold",
     "outer inner tail", "leftright", "boxed", "padded",
   ].every((s) => text.includes(s)), JSON.stringify(rows));
+  check(`${name} breaks a row on a newline rather than drawing it`,
+    rows.includes("broken") && rows.includes("across rows")
+      && !rows.some((r) => r.includes("\n")),
+    JSON.stringify(rows));
   check(`${name} drew the rule and the pushed edge`,
     /^─+$/.test(rows.find((r) => r.startsWith("─")) ?? "") && /start +end$/.test(
       rows.find((r) => r.includes("start")) ?? ""),

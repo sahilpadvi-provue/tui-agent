@@ -199,5 +199,47 @@ check("size does not change what it costs on screen",
   big.frame.includes("[Pasted text #1 +400 lines]")
     && big.frame.split("\n").filter((l) => l.includes("Pasted text")).length === 1);
 
+// ---------------------------------------------------------------------------
+// Newlines
+//
+// ctrl-j, not shift-Enter: in a terminal without the kitty keyboard protocol
+// shift-Enter is byte-identical to Enter, so it cannot be told apart. ctrl-j
+// is the LF byte, which is why the parser stopped reading LF as Enter.
+// ---------------------------------------------------------------------------
+
+check("ctrl-j inserts a newline instead of submitting",
+  await typed(["ab", CTRL("j"), "cd"]) === "ab\ncd",
+  JSON.stringify(await typed(["ab", CTRL("j"), "cd"])));
+check("Enter still submits", (await drive(["ab", ENTER])).sent.join("|") === "ab");
+
+// One deliberate line break is not a block worth collapsing, so it must not
+// take the paste path -- which turns anything containing a newline into a chip.
+const broken = await drive(["ab", CTRL("j"), "cd"]);
+check("a typed newline is not a paste chip", !broken.frame.includes("Pasted text"));
+
+const rows = broken.frame.split("\n").map((r) => r.replace(/\s+$/, ""));
+check("the marker is on the first row only",
+  rows.some((r) => /^ {2}\u203a ab$/.test(r)),
+  JSON.stringify(rows.filter((r) => r.includes("ab"))));
+check("and a continuation row is indented past it",
+  rows.some((r) => /^ {4}cd/.test(r)),
+  JSON.stringify(rows.filter((r) => r.includes("cd"))));
+
+check("up moves a row rather than recalling history",
+  await typed(["ab", CTRL("j"), "cd", UP, "X"]) === "abX\ncd",
+  JSON.stringify(await typed(["ab", CTRL("j"), "cd", UP, "X"])));
+check("down comes back",
+  await typed(["ab", CTRL("j"), "cd", UP, DOWN, "X"]) === "ab\ncdX",
+  JSON.stringify(await typed(["ab", CTRL("j"), "cd", UP, DOWN, "X"])));
+
+// The binding history had before newlines existed has to stay reachable, or
+// the up arrow is quietly taken away from it.
+const single = await drive(["one", ENTER, UP, "!", ENTER]);
+check("up on a single-row prompt still recalls history",
+  single.sent.join("|") === "one|one!", JSON.stringify(single.sent));
+const edge = await drive(["one", ENTER, "ab", CTRL("j"), "cd", UP, UP, "!", ENTER]);
+check("and up off the first row of a multi-row prompt reaches it too",
+  edge.sent.join("|") === "one|one!", JSON.stringify(edge.sent));
+
 console.log(failures === 0 ? "\nall key bindings behave" : `\n${failures} failed`);
 process.exit(failures === 0 ? 0 : 1);

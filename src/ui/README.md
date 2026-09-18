@@ -28,6 +28,8 @@ The terminal client. One subscriber to the event bus among several that could ex
 
 **A rerender must re-apply the backend provider.** Handing the backend a bare node changes the root element's type, and React answers that by unmounting the tree and building a new one — every piece of UI state, including a queued instruction, silently resets. It looks like a redraw. `scripts/queue-check.tsx` caught it and `backend:check` now guards it on both backends.
 
+**A newline is a row break, not a cell.** The cell renderer used to keep it as a cell, which wrote a raw LF into the middle of a row the diff counted as one row, desynchronising every row index after it -- the same failure ink#907 was, arriving through the content instead of through a resize. `paint` breaks the row now, which is also what Ink does, so `backend:check` covers it.
+
 **Known divergence: elastic fill.** `align="between"` differs by two columns between the two backends, because a flex engine subtracts the container's `padX` from the free space it distributes while the line model fills to the terminal edge. Measured, not a bug either side, and the only row of the real `App` the two do not match byte for byte.
 
 **The UI never calls the runtime.** It subscribes to the bus and receives `onSubmit` / `onCancel` / `onPermission` from `cli/`. It holds no reference to the loop, executor or model.
@@ -118,7 +120,15 @@ The prompt carries a cursor index, not just a string. Everything else follows fr
 
 The alternative was to keep the label itself in the string and map label to payload. That looks identical and is worse: 25 characters pretending to be one object, defended by a special case in every editing binding, and the cost of missing one is silent, because a broken label stops matching its payload and the prompt submits the label text instead of the code. `scripts/keys-check.tsx` demonstrates the difference. Lengthening the mark to two characters fails eight of its checks, and the informative one is the payload: backspace takes only the first character, the second is stranded in the prompt, and what reaches the model is that stray character rather than the paste.
 
-This is also why the composer is a single row again. A paste can no longer put a newline in the prompt, and there is no other way to enter one, so the multi-row folding that preceded this is gone.
+**The composer grows a row at a time, and `ctrl-j` is what grows it.** A paste can no longer put a newline in the prompt, so for a while there was no way to enter one and the composer was a single row. `ctrl-j` is the way back in.
+
+It is `ctrl-j` and not Shift+Enter because in a terminal without the kitty keyboard protocol the two are the same byte: Shift+Enter sends `\r`, exactly as Enter does, and no application code can tell them apart. Every other agent CLI landed in the same place. Codex's default newline is `ctrl-j`; Claude Code offers `ctrl-j` and `\` then Enter in every terminal and treats Shift+Enter as a per-terminal enhancement on top, negotiated through the kitty protocol where the terminal answers and injected into the terminal's own config where it does not; OpenTUI's textarea binds newline to return, kpenter and linefeed, which is `ctrl-j` again, and moves submit to meta+return. Enabling the kitty protocol here would re-encode escape, tab, backspace and every ctrl binding as `CSI u`, so the parser would have to learn a second encoding for the whole keyboard before it gained one key — including `ctrl-c`, which must always leave a way out. That is the reason the cheap key came first.
+
+`ctrl-j` does not take the paste path. Anything with a newline in it becomes a chip there, and one deliberate line break is not a block worth collapsing, so `write()` puts it in verbatim while `insert()` still makes chips out of pastes.
+
+**The marker belongs to the first row.** The composer draws a column of rows with `›` on the first and the rest indented to its width, so a multi-row prompt reads as one block of text rather than a list of entries. That split happens in `App`, not in the renderer: the renderer knows nothing about the marker, and a row break alone would leave continuation rows flush against the border.
+
+**The arrows move by row only while there is a row to move to.** Up on the first row is still history, which is what keeps that binding reachable on the single-row prompt this started as, and it is why `rowUp` returns `null` at the edge instead of clamping. Clamping would silently take the up arrow away from history, and the symptom would look like history being broken.
 
 **There is no `ctrl-l`.** Clearing the screen would destroy the settled transcript permanently: it lives in the terminal's real scrollback, and `Static` will not reprint it. `/clear` starts a fresh conversation, which is the thing people actually want.
 

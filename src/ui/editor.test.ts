@@ -10,6 +10,7 @@ import { test, expect, describe } from "bun:test";
 import {
   wordLeft, wordRight, normalizeNewlines,
   pasteMark, isPasteMark, pasteId, expandPastes, composerPieces,
+  composerRows, rowUp, rowDown,
 } from "./editor.ts";
 
 describe("wordLeft", () => {
@@ -145,5 +146,75 @@ describe("composerPieces", () => {
   });
   test("empty input is no pieces", () => {
     expect(composerPieces("", 0, label)).toEqual([]);
+  });
+});
+
+const label = (_: string) => "[chip]";
+
+describe("composerRows", () => {
+  test("a prompt with no newline is one row", () => {
+    const rows = composerRows("abc", 3, label);
+    expect(rows.length).toBe(1);
+    expect(rows[0]!.caret).toBe(true);
+  });
+  test("a newline splits the rows and the marker row keeps its text", () => {
+    const rows = composerRows("ab\ncd", 5, label);
+    expect(rows.length).toBe(2);
+    expect(rows[0]!.pieces.map((p) => p.text).join("")).toBe("ab");
+    expect(rows[1]!.pieces.map((p) => p.text).join("")).toBe("cd");
+  });
+  test("the caret is on the row the cursor is in, and nowhere else", () => {
+    const rows = composerRows("ab\ncd", 5, label);
+    expect(rows.map((r) => r.caret)).toEqual([false, true]);
+  });
+  test("a cursor resting on the newline draws at the end of the row before it", () => {
+    const rows = composerRows("ab\ncd", 2, label);
+    expect(rows.map((r) => r.caret)).toEqual([true, false]);
+  });
+  test("a cursor inside a row marks a piece rather than the caret", () => {
+    const rows = composerRows("ab\ncd", 4, label);
+    expect(rows[1]!.pieces.some((p) => p.cursor)).toBe(true);
+    expect(rows[1]!.caret).toBe(false);
+  });
+  test("an empty prompt is still one row, with the caret", () => {
+    expect(composerRows("", 0, label)).toEqual([{ pieces: [], caret: true }]);
+  });
+  test("a trailing newline leaves an empty last row", () => {
+    const rows = composerRows("ab\n", 3, label);
+    expect(rows.length).toBe(2);
+    expect(rows[1]!.pieces).toEqual([]);
+    expect(rows[1]!.caret).toBe(true);
+  });
+});
+
+describe("rowUp and rowDown", () => {
+  test("decline on a single-row prompt, so history keeps the arrows", () => {
+    expect(rowUp("abc", 1)).toBeNull();
+    expect(rowDown("abc", 1)).toBeNull();
+  });
+  test("decline at the first and last row of a multi-row prompt", () => {
+    expect(rowUp("ab\ncd", 1)).toBeNull();
+    expect(rowDown("ab\ncd", 4)).toBeNull();
+  });
+  test("up keeps the column", () => {
+    expect(rowUp("abcd\nefgh", 7)).toBe(2);
+  });
+  test("down keeps the column", () => {
+    expect(rowDown("abcd\nefgh", 2)).toBe(7);
+  });
+  test("a shorter target row clamps to its end rather than overshooting", () => {
+    expect(rowUp("ab\ncdef", 7)).toBe(2);
+  });
+  test("the end of a row is reachable from the row below", () => {
+    expect(rowUp("ab\ncd", 5)).toBe(2);
+  });
+  test("three rows step one at a time", () => {
+    expect(rowUp("a\nb\nc", 4)).toBe(2);
+    expect(rowUp("a\nb\nc", 2)).toBe(0);
+    expect(rowUp("a\nb\nc", 0)).toBeNull();
+  });
+  test("an out-of-range cursor is clamped, not trusted", () => {
+    expect(rowUp("ab\ncd", 99)).toBe(2);
+    expect(rowDown("ab\ncd", -5)).toBe(3);
   });
 });

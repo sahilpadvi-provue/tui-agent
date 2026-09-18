@@ -38,6 +38,42 @@ the `MODEL` env). TypeScript on Bun. Private repo
    speaks HTTP in Phase 2).
 5. No wire protocol until a second client exists.
 
+## Why the newline key is ctrl-j and not Shift+Enter
+
+Worth recording because the obvious answer is wrong and the research is not
+cheap to repeat. In a terminal without the kitty keyboard protocol Shift+Enter
+is byte-identical to Enter: both send `\r`, and no application code can tell
+them apart. Checked against the three products that solved this:
+
+- **Claude Code** (read out of the 2.1.276 binary and its docs): `ctrl-j` and
+  `\` then Enter work in every terminal with no setup. Shift+Enter is an
+  enhancement layered on top -- the kitty protocol where the terminal answers,
+  and `/terminal-setup` writing a binding into the terminal's own config where
+  it does not (VS Code gets a `sendSequence` of `\x1B\r`, Terminal.app gets
+  `useOptionAsMetaKey`). Not available at all in gnome-terminal or JetBrains,
+  where the docs say to use `ctrl-j`.
+- **Codex CLI 0.154.0**: default newline is `ctrl-j`. Shift+Enter is opt-in via
+  `[tui.keymap.composer] insert_newline = "shift-enter"`, with a row of open
+  issues about it regressing.
+- **OpenTUI**: its textarea binds `newline` to return, kpenter and linefeed,
+  and moves `submit` to meta+return.
+
+Nobody ships Shift+Enter as the only way in, and nobody ships kitty without a
+fallback under it.
+
+Enabling kitty's `disambiguateEscapeCodes` re-encodes most of the keyboard as
+`CSI u`: escape becomes `\x1b[27u`, tab `\x1b[9u`, backspace `\x1b[127u`, and
+every ctrl binding `\x1b[<code>;5u`. Measured against our parser, all of those
+currently produce a recognised-but-empty event, so they would go silently
+dead -- including `ctrl-c`, which must always leave a way out. The parser would
+have to learn a second encoding for the whole key surface to gain one key.
+
+Kitty is still the right way to get the Shift+Enter *label* later. The
+handshake is known and verified from Ink's implementation: query `\x1b[?u`,
+200ms timeout, enable `\x1b[>1u`, pop `\x1b[<u` on unmount, and buffered
+non-response bytes have to be pushed back into stdin or keystrokes typed during
+the window are lost. It goes on top of `ctrl-j`, never instead of it.
+
 ## Most recent change: the renderer is a contract
 
 The UI layer is swappable by construction rather than by luck. `backend.ts`
@@ -94,6 +130,10 @@ it. Ink is a dev dependency, now both the second backend and the control arm in
 
 - Composer is a real line editor: cursor movement, word jumps (alt-arrows,
   alt-b/f), ctrl-a/e/w/u/k, history with draft preservation, `?` shortcut list.
+- Multi-row prompts. `ctrl-j` inserts a line break, the composer draws a column
+  of rows with the `›` marker on the first and the rest indented to its width,
+  and the arrows move by row while there is a row to move to -- up on the first
+  row is still history.
 - Slash-command palette with arrow-key selection, Tab completion, and
   Enter completes-vs-runs.
 - Paste: bracketed paste on; multi-line pastes collapse to a
@@ -115,6 +155,11 @@ it. Ink is a dev dependency, now both the second backend and the control arm in
 
 ## Hard-won gotchas
 
+- **A deliberate newline must not take the paste path.** `insert()` turns
+  anything containing a newline into a `[Pasted text]` chip, which is right for
+  a paste and wrong for one typed line break -- the first cut of `ctrl-j` went
+  through it and produced a chip instead of a row. `write()` is the verbatim
+  path; `insert()` still makes chips.
 - **A rerender that changes the root element's type remounts the tree.** React
   answers a new root type by unmounting and rebuilding, so every piece of UI
   state silently resets -- and on screen it is indistinguishable from a redraw.
@@ -155,6 +200,9 @@ it. Ink is a dev dependency, now both the second backend and the control arm in
 
 ## Open threads
 
+- Shift+Enter via the kitty protocol, layered on top of `ctrl-j`. Needs the
+  handshake plus `CSI u` parsing for the whole key surface, and `ctrl-j` has to
+  stay underneath so no binding can go dark on a terminal that half-answers.
 - MCP client is the highest-leverage next feature (Phase 2; plugs into the
   typed tool registry). LSP is the next-best for edit quality. Both discussed,
   neither started.

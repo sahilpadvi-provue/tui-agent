@@ -18,6 +18,7 @@ export const SHORTCUTS: readonly ShortcutGroup[] = [
       { keys: "⌥← ⌥→", does: "by word" },
       { keys: "ctrl-a / home", does: "start of line" },
       { keys: "ctrl-e / end", does: "end of line" },
+      { keys: "\u2191 \u2193", does: "by row, once the prompt has more than one" },
     ],
   },
   {
@@ -26,6 +27,7 @@ export const SHORTCUTS: readonly ShortcutGroup[] = [
       { keys: "ctrl-w", does: "delete the word before the cursor" },
       { keys: "ctrl-u", does: "delete back to the start" },
       { keys: "ctrl-k", does: "delete to the end" },
+      { keys: "ctrl-j", does: "insert a line break" },
       { keys: "del", does: "delete the character under the cursor" },
     ],
   },
