@@ -17,6 +17,7 @@ import { mount } from "../src/ui/primitives.tsx";
 import { screen } from "./vt.ts";
 import { EventBus } from "../src/core/bus.ts";
 import { App, countSettled } from "../src/ui/App.tsx";
+import { clockRunning } from "../src/ui/clock.ts";
 
 const vt = screen(100, 30);
 const stdout = vt.stdout as unknown as { columns: number; emit(e: string): void };
@@ -38,6 +39,22 @@ const check = (name: string, ok: boolean, detail = "") => {
   console.log(`${ok ? "ok  " : "FAIL"} ${name}${ok || !detail ? "" : ` — ${detail}`}`);
   if (!ok) failures++;
 };
+
+/**
+ * This gate reads a still screen, and nothing used to say so.
+ *
+ * It mounts the real `App` and was safe only because it passes `busy={false}`,
+ * so no shimmer subscribes and the screen happens not to move. That is a fact
+ * about `App` today, not a property of the gate -- and a timer running here
+ * would make every check below self-healing, because its next tick re-renders
+ * and picks up whatever the resize failed to do. The first idle animation
+ * anyone adds would turn this gate green and useless in silence.
+ *
+ * So the dependency is asserted rather than assumed. If it ever fails, the
+ * answer is not to delete it: either the new motion should not run when idle,
+ * or this gate should set NO_MOTION and say why.
+ */
+check("the screen under test is genuinely still", clockRunning() === false);
 
 const e = (x: any) => bus.emit({ sessionId: "s", ...x });
 
