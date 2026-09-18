@@ -22,6 +22,7 @@ import { createRoot, reconciler, toLines, type Root } from "../render/host.ts";
 import { paint, cellAt, type Screen } from "../render/screen.ts";
 import { renderFrame, HIDE_CURSOR, SHOW_CURSOR } from "../render/diff.ts";
 import { StringDecoder } from "node:string_decoder";
+import { appendFileSync } from "node:fs";
 import { Parser, ENABLE_PASTE, DISABLE_PASTE } from "../render/input.ts";
 import type { Paint } from "../../theme/index.ts";
 
@@ -167,6 +168,19 @@ function useExit(): () => void {
 /** 60fps. Nothing in a terminal is shown faster, so a frame above this is a write with no reader. */
 export const FRAME_MS = 16;
 
+/**
+ * One line per frame, for a bug that only appears on a real terminal.
+ *
+ * Resizing a busy session leaves stacked copies of the live region behind, and
+ * no harness reproduces it -- a terminal the renderer can drive is not the same
+ * thing as one a person drags. What cannot be reconstructed from outside is
+ * whether the width used to paint matched the terminal at that instant, so that
+ * is what this records. Read once: off costs a closed-over null.
+ */
+const TRACE = process.env.TUI_TRACE
+  ? (process.env.TUI_TRACE === "1" ? "/tmp/tui-trace.log" : process.env.TUI_TRACE)
+  : null;
+
 function mount(node: ReactNode, options: MountOptions = {}): Instance {
   const out = options.stdout ?? process.stdout;
   const input = options.stdin ?? process.stdin;
@@ -191,8 +205,24 @@ function mount(node: ReactNode, options: MountOptions = {}): Instance {
     // which for an inline renderer means the session wipes itself on exit.
     if (unmounted) return;
     lastPaint = performance.now();
-    const next = paint(toLines(root), out.columns ?? 80);
-    out.write(renderFrame(prev, next, out.rows ?? 24));
+    const cols = out.columns ?? 80;
+    const viewport = out.rows ?? 24;
+    const next = paint(toLines(root), cols);
+    const bytes = renderFrame(prev, next, viewport);
+    out.write(bytes);
+    if (TRACE !== null) {
+      appendFileSync(TRACE, JSON.stringify({
+        t: Math.round(performance.now()),
+        cols, viewport,
+        prevW: prev?.width ?? null, prevH: prev?.height ?? null,
+        nextW: next.width, nextH: next.height,
+        // Repaint is chosen on the width alone, so recording both widths says
+        // which path ran without reaching into the diff for it.
+        repaint: prev === null || prev.width !== next.width,
+        out: bytes.length,
+        lines: (bytes.match(/\n/g) ?? []).length,
+      }) + "\n");
+    }
     prev = next;
     options.onRender?.();
   };
